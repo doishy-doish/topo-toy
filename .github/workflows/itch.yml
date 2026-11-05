@@ -16,12 +16,12 @@ jobs:
       - name: unpack
         run: |
           python3 -c "import zipfile; z=zipfile.ZipFile('butler.zip'); print(z.namelist()); z.extractall('butler')"
-          chmod +x butler/butler
-          ls -la butler/
+          chmod +x butler/linux-amd64/butler
+          ls -la butler/linux-amd64/
       - name: stage web dir
         run: |
           mkdir -p web && cp index.html web/ && ls -la web/
       - name: push to itch
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-        run: ./butler/butler push web doishy-doish/toposys:html5
+        run: ./butler/linux-amd64/butler push web doishy-doish/toposys:html5
