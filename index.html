@@ -32,6 +32,10 @@
   button:disabled { opacity:.45; cursor:default; }
   #stats { font-size:13px; color:#9fe8b4; min-height:20px; margin-top:8px; white-space:pre-wrap; text-align:center; }
   #verify { font-size:12px; color:#8b96a5; margin-top:6px; white-space:pre-wrap; text-align:center; }
+  #proBar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:6px 0 2px; font-size:12px; color:#8b96a5; }
+  #proBar label { display:flex; gap:6px; align-items:center; white-space:nowrap; }
+  #proBar select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:5px 8px; font:inherit; }
+  #histCv { border:1px solid #26303c; border-radius:6px; background:#060a12; }
   a { color:#7db8ff; }
   @media (max-width:900px) {
     #wb { flex-wrap:wrap; }
@@ -65,6 +69,15 @@
     <button id="svgBtn" disabled>download SVG</button>
     <button id="pngBtn" disabled>download PNG</button>
   </div>
+  <div id="proBar">
+    <label>filter <select id="filtSel"><option value="0">sensitivity</option><option value="1">density</option></select></label>
+    <label>projection β <select id="betaSel"><option value="0">off</option><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
+    <label><input type="checkbox" id="contChk"> continue β×2/10it</label>
+    <label><input type="checkbox" id="crispChk"> crisp</label>
+    <label>threshold <input type="range" id="threshRg" min="0.05" max="0.95" step="0.05" value="0.5" style="width:90px"><span id="threshV">0.50</span></label>
+    <canvas id="histCv" width="220" height="44" title="compliance history"></canvas>
+    <button id="csvBtn" disabled>history CSV</button>
+  </div>
   <div id="view3D" hidden>
     <span style="color:#8b96a5">3D view:</span>
     <button id="projBtn">max projection</button>
@@ -91,7 +104,7 @@
   <div id="legend"><div id="legTitle">Topology<br>Density</div><div id="legMax">1.00</div><canvas id="legCv" width="28" height="256"></canvas><div id="legMin">0.00</div></div>
 </div><!-- /wb -->
 <div id="statusbar"><span id="sbMesh">mesh: —</span><span id="sbSolver">solver: —</span><span id="sbMem">mem: —</span></div>
-<p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
+<p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update; pro opts (rodin-port): density filter + Heaviside projection/continuation, crisp threshold export. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
 
 <script src="vendor/sim-wasm.js"></script>
 <script src="vendor/memtrash.js"></script>
@@ -120,6 +133,8 @@ const KE = (function () {
 const Sim = {
   nelx: 120, nely: 20, volfrac: 0.5, penal: 3.0, rmin: 2.4,
   Emin: 1e-9, E0: 1.0,
+  projBeta: 0, projEta: 0.5, filterMode: 0, // pro opts (rodin-port); defaults = legacy path
+  xphys: null, xt: null,
   x: null, edof: null, rows: null, cols: null, rowPtr: null, diagIdx: null,
   fixed: null, free: null, F: null, H: null, Hs: null, loadNode: 0,
   L: 120, Hh: 20,
@@ -224,11 +239,37 @@ const Sim = {
     this.x = new Float64Array(nel).fill(this.volfrac);
   },
 
+  heav(xv) {
+    if (this.projBeta <= 0) return xv;
+    const b = this.projBeta, e = this.projEta;
+    return (Math.tanh(b * e) + Math.tanh(b * (xv - e))) / (Math.tanh(b * e) + Math.tanh(b * (1 - e)));
+  },
+  dheav(xv) {
+    if (this.projBeta <= 0) return 1;
+    const b = this.projBeta, e = this.projEta, c = Math.cosh(b * (xv - e));
+    return b / (c * c * (Math.tanh(b * e) + Math.tanh(b * (1 - e))));
+  },
+  computePhys() {
+    const nel = this.x.length;
+    if (!this.xphys || this.xphys.length !== nel) { this.xphys = new Float64Array(nel); this.xt = new Float64Array(nel); }
+    if (this.filterMode === 1) {
+      for (let e1 = 0; e1 < nel; e1++) {
+        let s = 0;
+        for (const [e2, w] of this.H[e1]) s += w * this.x[e2];
+        this.xt[e1] = s / this.Hs[e1];
+        this.xphys[e1] = this.heav(this.xt[e1]);
+      }
+    } else for (let e = 0; e < nel; e++) this.xphys[e] = this.heav(this.x[e]);
+  },
+
   assemble() {
+    this.computePhys();
     const { edof, vals, scatP, scatK, KEF } = this;
     vals.fill(0);
     for (let e = 0; e < edof.length; e++) {
-      const s = this.Emin + Math.pow(this.x[e], this.penal) * (this.E0 - this.Emin);
+      // legacy fast path: xphys[e] === x[e] exactly when projection is off
+      const px = (this.projBeta <= 0 && this.filterMode === 0) ? this.x[e] : this.xphys[e];
+      const s = this.Emin + Math.pow(px, this.penal) * (this.E0 - this.Emin);
       const base = e * 64;
       for (let k = 0; k < 64; k++) vals[scatP[base + k]] += s * KEF[scatK[base + k]];
     }
@@ -281,9 +322,10 @@ const Sim = {
       for (let a = 0; a < 8; a++) ue[a] = u[ed[a]];
       let e_ = 0;
       for (let a = 0; a < 8; a++) { let s = 0; for (let b = 0; b < 8; b++) s += KE[a][b] * ue[b]; e_ += ue[a] * s; }
-      const xs = Math.pow(x[e], this.penal) * (this.E0 - this.Emin);
+      const xs = Math.pow(this.xphys[e], this.penal) * (this.E0 - this.Emin);
       c += xs * e_;
-      dc[e] = -this.penal * Math.pow(x[e], this.penal - 1) * (this.E0 - this.Emin) * e_;
+      const phys = this.filterMode === 1 ? this.xt[e] : x[e];
+      dc[e] = -this.penal * Math.pow(this.xphys[e], this.penal - 1) * (this.E0 - this.Emin) * e_ * this.dheav(phys);
     }
     return { c, dc };
   },
@@ -293,8 +335,12 @@ const Sim = {
     const { u } = this.solve();
     const { c, dc } = this.compliance(u);
     const nel = this.x.length, x = this.x;
-    // filter
+    // filter (sensitivity = legacy; density = chain-rule scatter)
     const dcf = new Float64Array(nel);
+    if (this.filterMode === 1) {
+      for (let e1 = 0; e1 < nel; e1++)
+        for (const [e2, w] of this.H[e1]) dcf[e2] += w * dc[e1] / this.Hs[e1];
+    } else
     for (let e1 = 0; e1 < nel; e1++) {
       let s = 0;
       for (const [e2, w] of this.H[e1]) s += w * x[e2] * dc[e2];
@@ -348,6 +394,10 @@ const WasmCore = {
       A.reset2 = c("topo2d_reset", null, []);
       A.verify2 = c("topo2d_verify", null, ["number"]);
       A.step2 = c("topo2d_step", "number", []);
+      try { A.setProj = WasmCore.mod["_topo2d_set_projection"] ? c("topo2d_set_projection", null, ["number", "number"]) : null; }
+      catch (e) { A.setProj = null; }
+      try { A.setFilt = WasmCore.mod["_topo2d_set_filter"] ? c("topo2d_set_filter", null, ["number"]) : null; }
+      catch (e) { A.setFilt = null; }
       A.b3 = c("topo3d_build", "number", []);
       A.nel3 = c("topo3d_nel", "number", []);
       A.x3 = c("topo3d_x", "number", []);
@@ -406,7 +456,9 @@ async function runWasm2D(presetIdx) {
       (Math.abs(v.tip - thb) / thb * 100).toFixed(1) + "% off (CG " + v.cg.toFixed(0) + " iters, engine:wasm). Then optimizing from 50% volume…";
   }
   A.reset2();
+  applyPro();
   Sim.x.set(WasmCore.view2(nel));
+  histReset();
   view3D.hidden = true;
   window.__memtrash.track("solve-x2", { size: nel * 8, tag: "solve-mirror", site: "runWasm2D", permanent: true });
   const prev = new Float64Array(Sim.x);
@@ -417,11 +469,13 @@ async function runWasm2D(presetIdx) {
     for (let k = 0; k < 2; k++) {
       const c = A.step2();
       iters++;
+      proTick();
+      histPush(c);
       Sim.x.set(WasmCore.view2(nel));
       let ch = 0;
       for (let e = 0; e < nel; e++) { const d = Math.abs(Sim.x[e] - prev[e]); if (d > ch) ch = d; }
       prev.set(Sim.x);
-      statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm   mem:" + window.__memtrash.live();
+      statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm   mem:" + window.__memtrash.live() + proLabel();
       if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
     }
     draw();
@@ -440,6 +494,7 @@ async function runWasm3D() {
     " → " + (Math.abs(v.tip - th3) / th3 * 100).toFixed(1) + "% off (CG " + v.cg.toFixed(0) + " iters, engine:wasm). Growing…";
   A.reset3();
   Sim3.x.set(WasmCore.view3(nel));
+  histReset();
   running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
   view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
   for (let it = 1; it <= 15; it++) {
@@ -448,6 +503,7 @@ async function runWasm3D() {
     const c = A.step3();
     Sim3.x.set(WasmCore.view3(nel));
     statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   engine:wasm   mem:" + window.__memtrash.live();
+    histPush(c);
     draw3();
   }
   running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
@@ -481,8 +537,10 @@ function renderField(field, nelx, nely) {
   const img = wbOctx.createImageData(nelx, nely);
   const d = img.data;
   let mn = Infinity, mx = -Infinity;
+  const crisp = !!window.__crisp, th = (window.__thresh == null ? 0.5 : window.__thresh);
   for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
-    const v = field[ex * nely + ey];
+    let v = field[ex * nely + ey];
+    if (crisp) v = v >= th ? 1 : 0;
     if (v < mn) mn = v; if (v > mx) mx = v;
     const [r, g, b] = cmap(v);
     const o = ((nely - 1 - ey) * nelx + ex) * 4;
@@ -544,7 +602,9 @@ function frame() {
   for (let k = 0; k < 2; k++) {
     const { c, ch } = Sim.step();
     iters++;
-    statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2);
+    proTick();
+    histPush(c);
+    statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + proLabel();
     if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
   }
   draw();
@@ -572,6 +632,8 @@ runBtn.onclick = () => {
   }
   Sim.x.fill(Sim.volfrac);
   for (const e of Sim.holes) Sim.x[e] = 0.001;
+  applyPro();
+  histReset();
   iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
   draw();
   requestAnimationFrame(frame);
@@ -581,11 +643,12 @@ runBtn.onclick = () => {
 function contourSVG() {
   const { nelx, nely, x } = Sim;
   const g = (ix, iy) => (ix < 0 || iy < 0 || ix >= nelx || iy >= nely) ? 0 : x[ix * nely + iy];
+  const th = (window.__thresh == null ? 0.5 : window.__thresh);
   const S = 10, segs = [];
   const pt = (ix, iy, fx, fy) => [(ix + fx) * S, (nely - iy - fy) * S];
   for (let ix = -1; ix <= nelx; ix++) for (let iy = -1; iy <= nely; iy++) {
-    const a = g(ix, iy) > 0.5 ? 8 : 0, b = g(ix + 1, iy) > 0.5 ? 4 : 0,
-          c = g(ix + 1, iy + 1) > 0.5 ? 2 : 0, d = g(ix, iy + 1) > 0.5 ? 1 : 0;
+    const a = g(ix, iy) > th ? 8 : 0, b = g(ix + 1, iy) > th ? 4 : 0,
+          c = g(ix + 1, iy + 1) > th ? 2 : 0, d = g(ix, iy + 1) > th ? 1 : 0;
     const cs = a | b | c | d;
     if (cs === 0 || cs === 15) continue;
     const T = pt(ix, iy, 0.5, 0), R = pt(ix, iy, 1, 0.5), B = pt(ix, iy, 0.5, 1), Lp = pt(ix, iy, 0, 0.5);
@@ -614,6 +677,60 @@ function download(name, text, type) {
 }
 
 svgBtn.onclick = () => download("topo.svg", contourSVG(), "image/svg+xml");
+
+/* ---------- pro opts (rodin-port): density filter + Heaviside projection/continuation, crisp export, history ---------- */
+window.__hist = []; window.__betaCur = 0; window.__betaMax = 0; window.__thresh = 0.5; window.__crisp = false;
+const filtSel = document.getElementById("filtSel"), betaSel = document.getElementById("betaSel"),
+  contChk = document.getElementById("contChk"), crispChk = document.getElementById("crispChk"),
+  threshRg = document.getElementById("threshRg"), threshV = document.getElementById("threshV"),
+  histCv = document.getElementById("histCv"), csvBtn = document.getElementById("csvBtn");
+function proLabel() {
+  const f = +filtSel.value, b = window.__betaCur;
+  return (f === 1 ? " pro:filt=density" : "") + (b > 0 ? " pro:β=" + b : "");
+}
+function applyPro() {
+  const f = +filtSel.value, b0 = +betaSel.value;
+  window.__betaMax = (contChk.checked && b0 > 0) ? b0 : 0;
+  window.__betaCur = b0;
+  if (WasmCore.ready && WasmCore.api.setProj) { WasmCore.api.setProj(b0, 0.5); WasmCore.api.setFilt(f); }
+  Sim.projBeta = b0; Sim.projEta = 0.5; Sim.filterMode = f;
+}
+function applyProBeta() {
+  const f = +filtSel.value, b = window.__betaCur;
+  if (WasmCore.ready && WasmCore.api.setProj) { WasmCore.api.setProj(b, 0.5); WasmCore.api.setFilt(f); }
+  Sim.projBeta = b; Sim.filterMode = f;
+}
+function proTick() { // continuation: double beta every 10 iters up to the selected max
+  if (window.__betaMax > 0 && iters % 10 === 0 && window.__betaCur < window.__betaMax) {
+    window.__betaCur = Math.min(window.__betaMax, (window.__betaCur || 1) * 2);
+    applyProBeta();
+  }
+}
+function histPush(c) {
+  window.__hist.push(c);
+  const h = histCv.getContext("2d"), W = histCv.width, Hh = histCv.height;
+  h.clearRect(0, 0, W, Hh);
+  const n = window.__hist.length;
+  if (!n) return;
+  let mn = Infinity, mx = -Infinity;
+  for (const v of window.__hist) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  if (!(mx > mn)) { mx = mn + 1; }
+  h.strokeStyle = "#4d9fff"; h.lineWidth = 1.5; h.beginPath();
+  window.__hist.forEach((v, i) => {
+    const x = 4 + (W - 8) * (n === 1 ? 0 : i / (n - 1)), y = Hh - 4 - (Hh - 8) * (v - mn) / (mx - mn);
+    i ? h.lineTo(x, y) : h.moveTo(x, y);
+  });
+  h.stroke();
+  csvBtn.disabled = false;
+}
+function histReset() { window.__hist = []; histCv.getContext("2d").clearRect(0, 0, histCv.width, histCv.height); csvBtn.disabled = true; }
+threshRg.oninput = () => { window.__thresh = +threshRg.value; threshV.textContent = (+threshRg.value).toFixed(2); draw(); };
+crispChk.onchange = () => { window.__crisp = crispChk.checked; draw(); };
+csvBtn.onclick = () => {
+  let s = "iter,compliance\n";
+  window.__hist.forEach((c, i) => s += (i + 1) + "," + c.toFixed(4) + "\n");
+  download("topo-history.csv", s, "text/csv");
+};
 
 /* ---------- Stage 1: paint your own problem ---------- */
 let paintMode = false, tool = "wall";
@@ -1083,6 +1200,7 @@ async function run3D() {
   verifyEl.textContent = "3D uniform check: FE tip " + v.tip.toFixed(2) + " vs beam theory " + v.theory.toFixed(2) +
     " → " + (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Growing…";
   Sim3.x.fill(Sim3.volfrac);
+  histReset();
   running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
   view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
   if (!Sim3.edof) return;
@@ -1091,6 +1209,7 @@ async function run3D() {
     if (!running3) break;
     const { c, ch } = Sim3.step();
     statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   change " + ch.toFixed(3);
+    histPush(c);
     draw3();
     if (ch < 0.015 && it >= 5) break;
   }
