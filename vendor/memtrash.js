@@ -13,6 +13,7 @@
   if (typeof module !== "undefined" && module.exports) module.exports = M;
   root.MemTrash = M.MemTrash;
   root.createMemTrash = M.createMemTrash;
+  root.startShed = M.startShed;
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
@@ -62,6 +63,33 @@
     return b;
   };
 
+  // The smarter check: learn the expected maximum (baseline) on first sight,
+  // then patch AUTOMATICALLY when memory grows past the hard budget or past
+  // baseline*growthFactor. sweep(0) releases everything non-permanent —
+  // "starts patching anyways". Permanent entries are never patched, only counted.
+  MemTrash.prototype.setBudget = function (b) {
+    b = b || {};
+    this.budgetBytes = b.maxBytes || 0;
+    this.growthFactor = b.growthFactor || 0;
+    this.growthMin = b.growthMin || 0;
+    this.baseline = 0; this.wasOver = false; // re-latch on next check
+  };
+  MemTrash.prototype.checkBudget = function (orphan) {
+    var b = this.bytes();
+    if (!this.baseline && b > 0) this.baseline = b; // latch the expected max
+    var hard = this.budgetBytes > 0 && b > this.budgetBytes;
+    var growth = this.growthFactor > 0 && b > this.growthMin && b > this.baseline * this.growthFactor;
+    var over = !!(hard || growth);
+    var rep = { over: over, newlyOver: over && !this.wasOver,
+      why: hard ? "over-budget" : (growth ? "growth-trip" : ""),
+      released: 0, reported: 0, skipped: 0 };
+    this.wasOver = over;
+    if (!over) return rep;
+    var s = this.sweep(0, orphan);
+    rep.released = s.released; rep.reported = s.reported; rep.skipped = s.skipped;
+    return rep;
+  };
+
   // sweep(maxIdleMs, orphan): dispose stale non-permanent entries.
   // orphan(key, rec) -> true means "owner gone" (e.g. mesh key with no chunk):
   // disposed immediately regardless of age. Returns {released, reported, skipped}.
@@ -109,17 +137,25 @@
   MemTrash.prototype.log = function (extra) { return JSON.stringify(this.audit(extra)); };
 
   // startShed(mt, {everyMs, maxIdleMs, orphan, onShed}): the patrol scrub.
+  // Each patrol runs the age sweep AND the budget check (auto-patch on growth).
+  // onShed fires only when something was patched/reported or a budget trip is
+  // new — no spam while over-budget with nothing releasable left.
   // Returns a stop() function. Mirrors andra-voxel's memShed interval.
   function startShed(mt, opts) {
     opts = opts || {};
     var every = opts.everyMs || 30000;
     var maxIdle = opts.maxIdleMs == null ? 120000 : opts.maxIdleMs;
     var id = setInterval(function () {
-      var rep;
+      var rep = { released: 0, reported: 0, skipped: 0 };
+      var bc = null;
       try { rep = mt.sweep(maxIdle, opts.orphan); }
-      catch (e) { rep = { error: String(e) }; }
-      if ((rep.released || rep.reported) && typeof opts.onShed === "function") {
-        try { opts.onShed(rep, mt.audit()); } catch (e) { /* never throw the patrol */ }
+      catch (e) { rep = { released: 0, reported: 0, skipped: 0, error: String(e) }; }
+      try { bc = mt.checkBudget(opts.orphan); }
+      catch (e) { bc = null; }
+      var news = (rep.released || rep.reported) ||
+        (bc && (bc.released || bc.reported || bc.newlyOver));
+      if (news && typeof opts.onShed === "function") {
+        try { opts.onShed({ age: rep, budget: bc }, mt.audit()); } catch (e) { /* never throw the patrol */ }
       }
     }, every);
     if (id && typeof id.unref === "function") { try { id.unref(); } catch (e) {} }
