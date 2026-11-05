@@ -30,8 +30,17 @@
       <option value="bridge">bridge (both ends pinned, center load)</option>
     </select>
     <button id="runBtn">grow it</button>
+    <button id="modeBtn">paint your own</button>
     <button id="svgBtn" disabled>download SVG</button>
     <button id="pngBtn" disabled>download PNG</button>
+  </div>
+  <div id="toolBar" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">
+    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
+    <button data-tool="wall" style="border-color:#4d9fff">wall (fixed)</button>
+    <button data-tool="load" style="border-color:#ff5d5d">load (hangs weight)</button>
+    <button data-tool="hole" style="border-color:#8b96a5">hole (stays empty)</button>
+    <button data-tool="erase">eraser</button>
+    <button id="clearBtn">clear</button>
   </div>
   <div id="stats">press "grow it"</div>
   <div id="verify"></div>
@@ -109,21 +118,28 @@ const Sim = {
         this.scatP[e * 64 + a * 8 + b] = pos; this.scatK[e * 64 + a * 8 + b] = a * 8 + b;
       }
     }
-    // loads + fixtures
-    const fixed = new Set();
-    this.F = new Float64Array(ndof);
-    if (preset === "cantilever") {
-      for (let iy = 0; iy <= nely; iy++) { fixed.add(2 * this.nid(0, iy)); fixed.add(2 * this.nid(0, iy) + 1); }
-      this.loadNode = this.nid(nelx, nely >> 1);
-      this.F[2 * this.loadNode + 1] = -1;
-      this.L = nelx; this.Hh = nely;
-    } else { // bridge: pinned bottom corners, center-bottom load
-      for (const d of [0, 1]) { fixed.add(2 * this.nid(0, 0) + d); fixed.add(2 * this.nid(nelx, 0) + d); }
-      this.loadNode = this.nid(nelx >> 1, 0);
-      this.F[2 * this.loadNode + 1] = -1;
-      this.L = nelx; this.Hh = nely;
+    // loads + fixtures: preset string, or custom {fixed:[nodeIds], loads:[[node,fx,fy]], holes:[elIds]}
+    let fixed = new Set(), loads = [], holes = new Set();
+    if (typeof preset === "string") {
+      if (preset === "cantilever") {
+        for (let iy = 0; iy <= nely; iy++) { fixed.add(2 * this.nid(0, iy)); fixed.add(2 * this.nid(0, iy) + 1); }
+        loads.push([this.nid(nelx, nely >> 1), 0, -1]);
+        this.L = nelx; this.Hh = nely;
+        this.loadNode = this.nid(nelx, nely >> 1);
+      } else { // bridge
+        for (const d of [0, 1]) { fixed.add(2 * this.nid(0, 0) + d); fixed.add(2 * this.nid(nelx, 0) + d); }
+        loads.push([this.nid(nelx >> 1, 0), 0, -1]);
+        this.L = nelx; this.Hh = nely;
+        this.loadNode = this.nid(nelx >> 1, 0);
+      }
+    } else if (preset && preset.custom) {
+      fixed = new Set(preset.fixed); loads = preset.loads; holes = new Set(preset.holes);
+      this.loadNode = loads.length ? loads[0][0] : 0;
     }
+    this.F = new Float64Array(ndof);
+    for (const [node, fx, fy] of loads) { this.F[2 * node] += fx; this.F[2 * node + 1] += fy; }
     this.fixed = fixed;
+    this.holes = holes;
     this.free = [];
     for (let i = 0; i < ndof; i++) if (!fixed.has(i)) this.free.push(i);
     // sensitivity filter weights
@@ -235,6 +251,7 @@ const Sim = {
     }
     let ch = 0;
     for (let e = 0; e < nel; e++) { ch = Math.max(ch, Math.abs(xnew[e] - x[e])); x[e] = xnew[e]; }
+    for (const e of this.holes) x[e] = 0.001; // painted voids stay void
     return { c, ch };
   },
 
@@ -271,6 +288,7 @@ function draw() {
     ctx2d.fillStyle = "rgb(" + g + "," + g + "," + g + ")";
     ctx2d.fillRect(ex * px, (nely - 1 - ey) * px, px, px);
   }
+  drawPaint();
 }
 
 function frame() {
@@ -286,12 +304,19 @@ function frame() {
 }
 
 runBtn.onclick = () => {
-  Sim.build(presetEl.value);
-  const v = Sim.verify();
-  verifyEl.textContent = "uniform-density check: FE tip " + v.tip.toFixed(1) +
-    " vs beam theory " + v.theory.toFixed(1) + " → " +
-    (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Then optimizing from 50% volume…";
+  if (paintMode) {
+    Sim.build({ custom: true, fixed: [...paint.fixed], loads: [...paint.loads].map(n => [n, 0, -1]), holes: [...paint.holes] });
+    verifyEl.textContent = "custom problem: " + paint.fixed.size + " fixed nodes, " + paint.loads.size + " loads, " +
+      paint.holes.size + " forced voids. No textbook answer — the grown truss is the test.";
+  } else {
+    Sim.build(presetEl.value);
+    const v = Sim.verify();
+    verifyEl.textContent = "uniform-density check: FE tip " + v.tip.toFixed(1) +
+      " vs beam theory " + v.theory.toFixed(1) + " → " +
+      (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Then optimizing from 50% volume…";
+  }
   Sim.x.fill(Sim.volfrac);
+  for (const e of Sim.holes) Sim.x[e] = 0.001;
   iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
   draw();
   requestAnimationFrame(frame);
@@ -334,6 +359,89 @@ function download(name, text, type) {
 }
 
 svgBtn.onclick = () => download("topo.svg", contourSVG(), "image/svg+xml");
+
+/* ---------- Stage 1: paint your own problem ---------- */
+let paintMode = false, tool = "wall";
+const paint = { fixed: new Set(), loads: new Set(), holes: new Set() };
+const modeBtn = document.getElementById("modeBtn");
+const toolBar = document.getElementById("toolBar");
+const clearBtn = document.getElementById("clearBtn");
+modeBtn.onclick = () => {
+  paintMode = !paintMode;
+  toolBar.hidden = !paintMode;
+  modeBtn.textContent = paintMode ? "back to presets" : "paint your own";
+  if (paintMode && !Sim.edof) { Sim.build("cantilever"); Sim.x.fill(Sim.volfrac); draw(); }
+  else draw();
+};
+clearBtn.onclick = () => { paint.fixed.clear(); paint.loads.clear(); paint.holes.clear(); draw(); };
+toolBar.querySelectorAll("[data-tool]").forEach(b => {
+  b.onclick = () => {
+    tool = b.dataset.tool;
+    toolBar.querySelectorAll("[data-tool]").forEach(x => x.style.background = "");
+    b.style.background = "#2a3a55";
+  };
+});
+let painting = false;
+function paintAt(ev) {
+  const r = cv.getBoundingClientRect();
+  const gx = (ev.clientX - r.left) / r.width * Sim.nelx;
+  const gy = (ev.clientY - r.top) / r.height * Sim.nely; // element units from top
+  const { nelx, nely } = Sim;
+  const apply = (fn) => fn();
+  if (tool === "hole" || tool === "erase") {
+    const ex = Math.max(0, Math.min(nelx - 1, Math.floor(gx)));
+    const ey = Math.max(0, Math.min(nely - 1, nely - 1 - Math.floor(gy)));
+    const e = ex * nely + ey;
+    apply(() => {
+      if (tool === "hole") paint.holes.add(e);
+      else {
+        paint.holes.delete(e);
+        for (const n of nodesOf(e, nelx, nely)) { paint.fixed.delete(n); paint.loads.delete(n); }
+      }
+    });
+  } else {
+    const ix = Math.max(0, Math.min(nelx, Math.round(gx)));
+    const iy = Math.max(0, Math.min(nely, Math.round(nely - gy)));
+    const n = ix * (nely + 1) + iy;
+    apply(() => {
+      if (tool === "wall") { paint.fixed.add(n); paint.loads.delete(n); }
+      else { paint.loads.add(n); paint.fixed.delete(n); }
+    });
+  }
+  draw();
+}
+function nodesOf(e, nelx, nely) {
+  const ex = (e / nely) | 0, ey = e % nely;
+  const id = (ix, iy) => ix * (nely + 1) + iy;
+  return [id(ex, ey), id(ex + 1, ey), id(ex + 1, ey + 1), id(ex, ey + 1)];
+}
+cv.addEventListener("mousedown", (ev) => { if (paintMode) { painting = true; paintAt(ev); } });
+cv.addEventListener("mousemove", (ev) => { if (paintMode && painting) paintAt(ev); });
+window.addEventListener("mouseup", () => painting = false);
+function drawPaint() {
+  if (typeof paintMode === "undefined" || !paintMode || !Sim.edof) return;
+  const { nelx, nely } = Sim;
+  const epx = cv.width / nelx, epy = cv.height / nely;
+  ctx2d.fillStyle = "rgba(77,159,255,0.85)";
+  for (const n of paint.fixed) {
+    const ix = (n / (nely + 1)) | 0, iy = n % (nely + 1);
+    ctx2d.fillRect(ix * epx - 3, (nely - iy) * epy - 3, 6, 6);
+  }
+  ctx2d.fillStyle = "rgba(255,93,93,0.9)";
+  for (const n of paint.loads) {
+    const ix = (n / (nely + 1)) | 0, iy = n % (nely + 1);
+    const cx = ix * epx, cy = (nely - iy) * epy;
+    ctx2d.beginPath(); ctx2d.arc(cx, cy, 4, 0, 7); ctx2d.fill();
+  }
+  ctx2d.strokeStyle = "rgba(0,0,0,0.8)"; ctx2d.lineWidth = 2;
+  for (const e of paint.holes) {
+    const ex = (e / nely) | 0, ey = e % nely;
+    const x0 = ex * epx, y0 = (nely - 1 - ey) * epy;
+    ctx2d.strokeRect(x0 + 1, y0 + 1, epx - 2, epy - 2);
+    ctx2d.beginPath(); ctx2d.moveTo(x0, y0); ctx2d.lineTo(x0 + epx, y0 + epy);
+    ctx2d.moveTo(x0 + epx, y0); ctx2d.lineTo(x0, y0 + epy); ctx2d.stroke();
+  }
+}
 pngBtn.onclick = () => {
   const a = document.createElement("a");
   a.href = cv.toDataURL("image/png"); a.download = "topo.png"; a.click();
