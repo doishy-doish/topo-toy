@@ -25,6 +25,8 @@
   #statusbar { max-width:1180px; margin:10px auto 0; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:8px 16px; font-size:12px; color:#8b96a5; display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
   #statusbar b { color:#d7dee8; font-weight:normal; }
   #bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:2px 0 6px; font-size:13px; }
+  #view3D, #toolBar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:0 0 6px; font-size:13px; }
+  #view3D[hidden], #toolBar[hidden] { display:none; }
   button, select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
   button:hover { background:#242f42; }
   button:disabled { opacity:.45; cursor:default; }
@@ -63,14 +65,14 @@
     <button id="svgBtn" disabled>download SVG</button>
     <button id="pngBtn" disabled>download PNG</button>
   </div>
-  <div id="view3D" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">
+  <div id="view3D" hidden>
     <span style="color:#8b96a5">3D view:</span>
     <button id="projBtn">max projection</button>
     <button id="sliceBtn">slice</button>
     <label>z <input type="range" id="sliceZ" min="0" max="5" value="3" style="width:120px"></label>
     <button id="stlBtn" disabled>download printable STL</button>
   </div>
-  <div id="toolBar" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
+  <div id="toolBar" hidden>    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
     <button data-tool="wall" style="border-color:#4d9fff">wall (fixed)</button>
     <button data-tool="load" style="border-color:#ff5d5d">load (hangs weight)</button>
     <button data-tool="hole" style="border-color:#8b96a5">hole (stays empty)</button>
@@ -390,6 +392,7 @@ async function runWasm2D(presetIdx) {
   }
   A.reset2();
   Sim.x.set(WasmCore.view2(nel));
+  view3D.hidden = true;
   window.__memtrash.track("solve-x2", { size: nel * 8, tag: "solve-mirror", site: "runWasm2D", permanent: true });
   const prev = new Float64Array(Sim.x);
   iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
@@ -535,6 +538,7 @@ function frame() {
 
 runBtn.onclick = () => {
   if (presetEl.value === "cantilever3d") { run3D(); return; }
+  view3D.hidden = true;
   const widx = { cantilever: 0, bridge: 1, mbb: 2, lbracket: 3 }[presetEl.value];
   if (!paintMode && widx !== undefined && WasmCore.ready) { runWasm2D(widx); return; }
   if (paintMode) {
