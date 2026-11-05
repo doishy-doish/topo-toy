@@ -24,3 +24,12 @@ Method: Sigmund SIMP, Q4 plane stress, Jacobi-CG solve, sensitivity filter, Opti
 - [x] Stage 2: arbitrary geometry — STL upload (binary+ASCII) → XY silhouette mask; export .msh (Gmsh) + .vtk (ParaView) alongside SVG/PNG. Verified: 10x4 plate keeps exactly 810/2400 cells.
 - [x] Stage 3: 3D hex SIMP (Gauss-derived 24x24 Ke) 40x12x6, slice viewer + max projection, printable STL export.
 - [x] Stage 4: validation corpus — cantilever + bridge + MBB + L-bracket locked contracts (`bench/reference*.json`), differential-tested against the C++ lineage on every push; headless Playwright runs every preset on every push.
+
+## engine: one C++ core, two targets
+
+`topo-cpp/wasm/sim.cpp` is the unified SIMP core (2D corpus + 3D cantilever) with a C API.
+CI compiles it twice: natively (differential-tested against every bench contract) and with
+Emscripten to `build/sim.js` (SINGLE_FILE), smoke-tested in node. That exact binary ships as
+`vendor/sim-wasm.js` and runs the in-page solves — the stats line says `engine:wasm` when it
+does. If the vendor file is missing (offline single-file use), the page falls back to the
+identical built-in JS solver (`engine` tag absent). Same math, same contracts, no drift.
