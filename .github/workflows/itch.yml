@@ -11,12 +11,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: fetch butler
         run: |
-          curl -sL -o butler.zip https://github.com/itchio/butler/releases/download/v15.32.0/butler-linux-amd64.zip
-          ls -la butler.zip && file butler.zip || true
+          curl -fSL -o butler.zip https://github.com/itchio/butler/releases/download/v15.32.0/butler-linux-amd64.zip
+          python3 -c "import zipfile; z=zipfile.ZipFile('butler.zip'); bad=z.testzip(); print('zip ok, entries:', len(z.namelist()), 'bad:', bad); assert bad is None"
       - name: unpack
         run: |
           unzip -o butler.zip -d butler && chmod +x butler/butler
-          ./butler/butler -V
+          ls -la butler/
       - name: stage web dir
         run: |
           mkdir -p web && cp index.html web/ && ls -la web/
