@@ -1,0 +1,15 @@
+import { chromium } from "playwright";
+import fs from "node:fs";
+fs.mkdirSync("shots", { recursive: true });
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+page.on("pageerror", (e) => console.log("[pageerror]", e.message));
+await page.goto("https://doishy-doish.github.io/topo-toy/", { waitUntil: "networkidle" });
+await page.click("#runBtn");
+await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
+console.log("STATS:", await page.textContent("#stats"));
+console.log("VERIFY:", await page.textContent("#verify"));
+await page.locator("#cv").screenshot({ path: "shots/canvas.png" });
+await page.screenshot({ path: "shots/page.png" });
+await browser.close();
+console.log("shots saved");
