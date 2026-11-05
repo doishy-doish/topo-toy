@@ -1,3 +1,12 @@
+# itch embed dashboard (set on itch.io, NOT in this file):
+#   Embed in page ✓ | auto-start ON | fullscreen button ON | scrollbars OFF | mobile-friendly ON
+#   Viewport portrait  = 800 wide x 1000 tall (vertical game frame)
+#   Viewport landscape = 1000 wide x 800 tall (horizontal game frame)
+#   The page canvas caps at 720 px wide + ~250 px chrome, so 800x1000 fits
+#   portrait without scrollbars and 1000x800 fits landscape.
+#   (Earlier note wrote "800x100" and told the operator to also enable landscape
+#   on a portrait frame — that was wrong; landscape = the 1000x800 frame.)
+#   SharedArrayBuffer stays OFF (single-threaded SINGLE_FILE wasm, no COOP/COEP need).
 name: itch
 on:
   push:
