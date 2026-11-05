@@ -9,10 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+      - name: fetch butler
+        run: |
+          curl -sL -o butler.zip https://github.com/itchio/butler/releases/download/v15.21.0/butler-linux-amd64.zip
+          ls -la butler.zip && file butler.zip || true
+      - name: unpack
+        run: |
           unzip -o butler.zip -d butler && chmod +x butler/butler
-          mkdir -p web && cp index.html web/
-          ./butler/butler push web doishy-doish/toposys:html5
+          ./butler/butler -V
+      - name: stage web dir
+        run: |
+          mkdir -p web && cp index.html web/ && ls -la web/
+      - name: push to itch
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: ./butler/butler push web doishy-doish/toposys:html5
