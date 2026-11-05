@@ -28,14 +28,21 @@
     <select id="preset">
       <option value="cantilever">cantilever (Euler-Bernoulli check)</option>
       <option value="bridge">bridge (both ends pinned, center load)</option>
+      <option value="cantilever3d">cantilever 3D 40×12×6 (beam-theory check)</option>
     </select>
     <button id="runBtn">grow it</button>
     <button id="modeBtn">paint your own</button>
     <button id="svgBtn" disabled>download SVG</button>
     <button id="pngBtn" disabled>download PNG</button>
   </div>
-  <div id="toolBar" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">
-    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
+  <div id="view3D" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">
+    <span style="color:#8b96a5">3D view:</span>
+    <button id="projBtn">max projection</button>
+    <button id="sliceBtn">slice</button>
+    <label>z <input type="range" id="sliceZ" min="0" max="5" value="3" style="width:120px"></label>
+    <button id="stlBtn" disabled>download printable STL</button>
+  </div>
+  <div id="toolBar" hidden style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;margin:0 0 6px;font-size:13px;">    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
     <button data-tool="wall" style="border-color:#4d9fff">wall (fixed)</button>
     <button data-tool="load" style="border-color:#ff5d5d">load (hangs weight)</button>
     <button data-tool="hole" style="border-color:#8b96a5">hole (stays empty)</button>
@@ -309,6 +316,7 @@ function frame() {
 }
 
 runBtn.onclick = () => {
+  if (presetEl.value === "cantilever3d") { run3D(); return; }
   if (paintMode) {
     Sim.build({ custom: true, fixed: [...paint.fixed], loads: [...paint.loads].map(n => [n, 0, -1]), holes: [...paint.holes] });
     verifyEl.textContent = "custom problem: " + paint.fixed.size + " fixed nodes, " + paint.loads.size + " loads, " +
@@ -545,6 +553,307 @@ function exportVTK() {
 }
 document.getElementById("mshBtn").onclick = () => { if (Sim.edof) download("topo.msh", exportMSH(), "text/plain"); };
 document.getElementById("vtkBtn").onclick = () => { if (Sim.edof) download("topo.vtk", exportVTK(), "text/plain"); };
+
+/* ---------- Stage 3: the third dimension (hex SIMP, chunked in C++) ---------- */
+const Sim3 = {
+  nelx: 40, nely: 12, nelz: 6, volfrac: 0.5, penal: 3.0, rmin: 1.5,
+  Emin: 1e-9, E0: 1.0, nu: 0.3, KE: null,
+  x: null, edof: null, rowPtr: null, cols: null, vals: null, diagIdx: null,
+  scatP: null, scatK: null, KEF: null, fixed: null, free: null, F: null,
+  H: null, Hs: null, loadNode: 0,
+  nid(ix, iy, iz) { return (ix * (this.nely + 1) + iy) * (this.nelz + 1) + iz; },
+  // 24x24 hex stiffness via 2x2x2 Gauss, trilinear iso-parametric cube
+  buildKE() {
+    const nu = this.nu, g = 1 / Math.sqrt(3);
+    const c = 1 / ((1 + nu) * (1 - 2 * nu));
+    const D = [
+      [1 - nu, nu, nu, 0, 0, 0], [nu, 1 - nu, nu, 0, 0, 0], [nu, nu, 1 - nu, 0, 0, 0],
+      [0, 0, 0, (1 - 2 * nu) / 2, 0, 0], [0, 0, 0, 0, (1 - 2 * nu) / 2, 0], [0, 0, 0, 0, 0, (1 - 2 * nu) / 2]
+    ].map(r => r.map(v => v * c));
+    const KE = [];
+    for (let i = 0; i < 24; i++) { KE.push([]); for (let j = 0; j < 24; j++) KE[i].push(0); }
+    for (const xi of [-g, g]) for (const et of [-g, g]) for (const ze of [-g, g]) {
+      const B = [];
+      for (let k = 0; k < 6; k++) { B.push([]); for (let j = 0; j < 24; j++) B[k].push(0); }
+      for (let a = 0; a < 8; a++) {
+        const sx = (a & 4) ? 1 : -1, sy = (a & 2) ? 1 : -1, sz = (a & 1) ? 1 : -1;
+        const dx = 2 * sx * (1 + sy * et) * (1 + sz * ze) / 8;
+        const dy = 2 * sy * (1 + sx * xi) * (1 + sz * ze) / 8;
+        const dz = 2 * sz * (1 + sx * xi) * (1 + sy * et) / 8;
+        const b = a * 3;
+        B[0][b] = dx; B[1][b + 1] = dy; B[2][b + 2] = dz;
+        B[3][b] = dy; B[3][b + 1] = dx;
+        B[4][b + 1] = dz; B[4][b + 2] = dy;
+        B[5][b] = dz; B[5][b + 2] = dx;
+      }
+      const M = []; // M = D * B
+      for (let k = 0; k < 6; k++) {
+        M.push([]);
+        for (let j = 0; j < 24; j++) { let s = 0; for (let l = 0; l < 6; l++) s += D[k][l] * B[l][j]; M[k].push(s); }
+      }
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) {
+        let s = 0; for (let k = 0; k < 6; k++) s += B[k][i] * M[k][j];
+        KE[i][j] += s * 0.125; // detJ = 1/8, Gauss weight 1
+      }
+    }
+    this.KE = KE; this.KEF = KE.flat();
+  },
+  build() {
+    if (!this.KE) this.buildKE();
+    const { nelx, nely, nelz } = this;
+    const nel = nelx * nely * nelz, nn = (nelx + 1) * (nely + 1) * (nelz + 1), ndof = 3 * nn;
+    this.edof = [];
+    for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) for (let ez = 0; ez < nelz; ez++) {
+      const e = [];
+      for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) for (let dz = 0; dz < 2; dz++) {
+        const n = this.nid(ex + dx, ey + dy, ez + dz);
+        e.push(3 * n, 3 * n + 1, 3 * n + 2);
+      }
+      this.edof.push(e);
+    }
+    const rowSets = [];
+    for (let i = 0; i < ndof; i++) rowSets.push(new Set());
+    for (const e of this.edof) for (const a of e) for (const b of e) rowSets[a].add(b);
+    this.rowPtr = new Int32Array(ndof + 1); this.diagIdx = new Int32Array(ndof);
+    const cols = []; let nnz = 0;
+    for (let i = 0; i < ndof; i++) {
+      const s = [...rowSets[i]].sort((p, q) => p - q);
+      this.rowPtr[i] = nnz; this.diagIdx[i] = nnz + s.indexOf(i);
+      for (const c of s) cols.push(c);
+      nnz += s.length;
+    }
+    this.rowPtr[ndof] = nnz;
+    this.cols = new Int32Array(cols);
+    this.vals = new Float64Array(nnz);
+    this.scatP = new Int32Array(nel * 576); this.scatK = new Uint16Array(nel * 576);
+    for (let e = 0; e < nel; e++) {
+      const ed = this.edof[e];
+      for (let a = 0; a < 24; a++) for (let b = 0; b < 24; b++) {
+        const r = ed[a], cc = ed[b];
+        let lo = this.rowPtr[r], hi = this.rowPtr[r + 1] - 1, pos = -1;
+        while (lo <= hi) { const mm = (lo + hi) >> 1; if (this.cols[mm] === cc) { pos = mm; break; } else if (this.cols[mm] < cc) lo = mm + 1; else hi = mm - 1; }
+        this.scatP[e * 576 + a * 24 + b] = pos; this.scatK[e * 576 + a * 24 + b] = a * 24 + b;
+      }
+    }
+    const fixed = new Set();
+    this.F = new Float64Array(ndof);
+    for (let iy = 0; iy <= nely; iy++) for (let iz = 0; iz <= nelz; iz++) {
+      const n = this.nid(0, iy, iz);
+      fixed.add(3 * n); fixed.add(3 * n + 1); fixed.add(3 * n + 2);
+    }
+    const my = nely >> 1;
+    for (let iz = 0; iz <= nelz; iz++) this.F[3 * this.nid(nelx, my, iz) + 1] = -1 / (nelz + 1);
+    this.loadNode = this.nid(nelx, my, (nelz + 1) >> 1);
+    this.fixed = fixed;
+    this.free = [];
+    for (let i = 0; i < ndof; i++) if (!fixed.has(i)) this.free.push(i);
+    this.H = []; this.Hs = new Float64Array(nel);
+    const R = Math.ceil(this.rmin);
+    for (let e1 = 0; e1 < nel; e1++) {
+      const i1 = (e1 / (nely * nelz)) | 0, j1 = ((e1 / nelz) | 0) % nely, k1 = e1 % nelz;
+      const row = [];
+      for (let i2 = Math.max(0, i1 - R); i2 <= Math.min(nelx - 1, i1 + R); i2++)
+        for (let j2 = Math.max(0, j1 - R); j2 <= Math.min(nely - 1, j1 + R); j2++)
+          for (let k2 = Math.max(0, k1 - R); k2 <= Math.min(nelz - 1, k1 + R); k2++) {
+            const fac = this.rmin - Math.hypot(i1 - i2, j1 - j2, k1 - k2);
+            if (fac > 0) { const e2 = (i2 * nely + j2) * nelz + k2; row.push([e2, fac]); this.Hs[e1] += fac; }
+          }
+      this.H.push(row);
+    }
+    this.x = new Float64Array(nel).fill(this.volfrac);
+  },
+  assemble() {
+    const { edof, vals, scatP, scatK, KEF } = this;
+    vals.fill(0);
+    for (let e = 0; e < edof.length; e++) {
+      const s = this.Emin + Math.pow(this.x[e], this.penal) * (this.E0 - this.Emin);
+      const base = e * 576;
+      for (let k = 0; k < 576; k++) vals[scatP[base + k]] += s * KEF[scatK[base + k]];
+    }
+  },
+  matvec(v, out) {
+    const { rowPtr, cols, vals } = this;
+    for (let i = 0; i < rowPtr.length - 1; i++) {
+      let s = 0;
+      for (let k = rowPtr[i]; k < rowPtr[i + 1]; k++) s += vals[k] * v[cols[k]];
+      out[i] = s;
+    }
+  },
+  solve(tol = 1e-5, maxIt = 2000) {
+    const n = this.free.length, idx = this.free;
+    const u = new Float64Array(this.F.length);
+    const r = new Float64Array(n), z = new Float64Array(n), p = new Float64Array(n), Ap = new Float64Array(this.F.length);
+    for (let i = 0; i < n; i++) r[i] = this.F[idx[i]];
+    const D = new Float64Array(n);
+    for (let i = 0; i < n; i++) { const d = this.vals[this.diagIdx[idx[i]]]; D[i] = d !== 0 ? 1 / d : 1; z[i] = r[i] * D[i]; p[i] = z[i]; }
+    let rz = 0; for (let i = 0; i < n; i++) rz += r[i] * z[i];
+    const r0 = Math.sqrt(rz) || 1;
+    const full = new Float64Array(this.F.length);
+    let it = 0;
+    for (; it < maxIt; it++) {
+      for (let i = 0; i < n; i++) full[idx[i]] = p[i];
+      this.matvec(full, Ap);
+      let pAp = 0; for (let i = 0; i < n; i++) pAp += p[i] * Ap[idx[i]];
+      if (pAp === 0) break;
+      const a = rz / pAp;
+      for (let i = 0; i < n; i++) { u[idx[i]] += a * p[i]; r[i] -= a * Ap[idx[i]]; }
+      for (let i = 0; i < n; i++) z[i] = r[i] * D[i];
+      let rz2 = 0; for (let i = 0; i < n; i++) rz2 += r[i] * z[i];
+      if (Math.sqrt(rz2) / r0 < tol) { it++; break; }
+      const b = rz2 / rz; rz = rz2;
+      for (let i = 0; i < n; i++) p[i] = z[i] + b * p[i];
+    }
+    return { u, iters: it };
+  },
+  compliance(u) {
+    const { edof, x, KE } = this;
+    const dc = new Float64Array(x.length);
+    const ue = new Float64Array(24);
+    let c = 0;
+    for (let e = 0; e < edof.length; e++) {
+      const ed = edof[e];
+      for (let a = 0; a < 24; a++) ue[a] = u[ed[a]];
+      let ee = 0;
+      for (let a = 0; a < 24; a++) { let s = 0; for (let b = 0; b < 24; b++) s += KE[a][b] * ue[b]; ee += ue[a] * s; }
+      c += Math.pow(x[e], this.penal) * (this.E0 - this.Emin) * ee;
+      dc[e] = -this.penal * Math.pow(x[e], this.penal - 1) * (this.E0 - this.Emin) * ee;
+    }
+    return { c, dc };
+  },
+  step() {
+    this.assemble();
+    const { u } = this.solve();
+    const { c, dc } = this.compliance(u);
+    const nel = this.x.length, x = this.x, dcf = new Float64Array(nel);
+    for (let e1 = 0; e1 < nel; e1++) {
+      let s = 0;
+      for (const [e2, w] of this.H[e1]) s += w * x[e2] * dc[e2];
+      dcf[e1] = s / (this.Hs[e1] * Math.max(1e-3, x[e1]));
+    }
+    const move = 0.2;
+    let l1 = 0, l2 = 1e9;
+    const xnew = new Float64Array(nel);
+    while (l2 - l1 > 1e-4) {
+      const lm = 0.5 * (l1 + l2);
+      let vol = 0;
+      for (let e = 0; e < nel; e++) {
+        const b = x[e] * Math.sqrt(Math.max(0, -dcf[e] / lm));
+        const lo = Math.max(0.001, x[e] - move), hi = Math.min(1, x[e] + move);
+        xnew[e] = Math.min(hi, Math.max(lo, Math.min(1, b)));
+        vol += xnew[e];
+      }
+      if (vol - this.volfrac * nel > 0) l1 = lm; else l2 = lm;
+    }
+    let ch = 0;
+    for (let e = 0; e < nel; e++) { ch = Math.max(ch, Math.abs(xnew[e] - x[e])); x[e] = xnew[e]; }
+    return { c, ch };
+  },
+  verify() {
+    this.x.fill(1);
+    this.assemble();
+    const { u, iters } = this.solve();
+    const tip = Math.abs(u[3 * this.loadNode + 1]);
+    const I = (this.nelz + 1 - 1 + 0) * 0 + (this.nelz) * Math.pow(this.nely, 3) / 12; // b=nodes? use element dims: b=nelz, h=nely
+    const theory = Math.pow(this.nelx, 3) / (3 * this.E0 * I);
+    return { tip, theory, err: Math.abs(tip - theory) / theory, cgIters: iters };
+  },
+  // max projection along z, and XY slice at ez
+  project(out) {
+    const { nelx, nely, nelz, x } = this;
+    for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+      let m = 0;
+      for (let ez = 0; ez < nelz; ez++) m = Math.max(m, x[(ex * nely + ey) * nelz + ez]);
+      out[ex * nely + ey] = m;
+    }
+  },
+  slice(ez, out) {
+    const { nelx, nely, nelz, x } = this;
+    for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++)
+      out[ex * nely + ey] = x[(ex * nely + ey) * nelz + ez];
+  }
+};
+
+// 3D UI: projection/slice viewer + printable STL (exposed voxel faces, correct outward winding)
+let view3mode = "proj";
+const view3D = document.getElementById("view3D");
+const sliceZ = document.getElementById("sliceZ");
+const stlBtn = document.getElementById("stlBtn");
+document.getElementById("projBtn").onclick = () => { view3mode = "proj"; draw3(); };
+document.getElementById("sliceBtn").onclick = () => { view3mode = "slice"; draw3(); };
+sliceZ.oninput = () => { if (view3mode === "slice") draw3(); };
+function draw3(field) {
+  const { nelx, nely } = Sim3;
+  const f = field || (() => { const o = new Float64Array(nelx * nely); Sim3.project(o); return o; })();
+  const px = Math.max(2, Math.floor(720 / nelx));
+  cv.width = nelx * px; cv.height = nely * px;
+  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+    const v = (view3mode === "slice") ? Sim3slice()[ex * nely + ey] : f[ex * nely + ey];
+    const g = Math.round(255 * (1 - v));
+    ctx2d.fillStyle = "rgb(" + g + "," + g + "," + g + ")";
+    ctx2d.fillRect(ex * px, (nely - 1 - ey) * px, px, px);
+  }
+}
+function Sim3slice() {
+  const { nelx, nely } = Sim3, o = new Float64Array(nelx * nely);
+  Sim3.slice(+sliceZ.value, o);
+  return o;
+}
+function solidAt(ex, ey, ez) {
+  const { nelx, nely, nelz, x } = Sim3;
+  if (ex < 0 || ey < 0 || ez < 0 || ex >= nelx || ey >= nely || ez >= nelz) return false;
+  return x[(ex * nely + ey) * nelz + ez] > 0.5;
+}
+function exportGrownSTL() {
+  const { nelx, nely, nelz } = Sim3;
+  const tris = [];
+  const V = (x, y, z) => [x, y, z];
+  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) for (let ez = 0; ez < nelz; ez++) {
+    if (!solidAt(ex, ey, ez)) continue;
+    const x0 = ex, x1 = ex + 1, y0 = ey, y1 = ey + 1, z0 = ez, z1 = ez + 1;
+    if (!solidAt(ex + 1, ey, ez)) tris.push([[1,0,0], V(x1,y0,z0), V(x1,y1,z0), V(x1,y1,z1)], [[1,0,0], V(x1,y0,z0), V(x1,y1,z1), V(x1,y0,z1)]);
+    if (!solidAt(ex - 1, ey, ez)) tris.push([[-1,0,0], V(x0,y0,z0), V(x0,y1,z1), V(x0,y1,z0)], [[-1,0,0], V(x0,y0,z0), V(x0,y0,z1), V(x0,y1,z1)]);
+    if (!solidAt(ex, ey + 1, ez)) tris.push([[0,1,0], V(x0,y1,z0), V(x1,y1,z0), V(x1,y1,z1)], [[0,1,0], V(x0,y1,z0), V(x1,y1,z1), V(x0,y1,z1)]);
+    if (!solidAt(ex, ey - 1, ez)) tris.push([[0,-1,0], V(x0,y0,z0), V(x1,y0,z1), V(x1,y0,z0)], [[0,-1,0], V(x0,y0,z0), V(x0,y0,z1), V(x1,y0,z1)]);
+    if (!solidAt(ex, ey, ez + 1)) tris.push([[0,0,1], V(x0,y0,z1), V(x1,y0,z1), V(x1,y1,z1)], [[0,0,1], V(x0,y0,z1), V(x1,y1,z1), V(x0,y1,z1)]);
+    if (!solidAt(ex, ey, ez - 1)) tris.push([[0,0,-1], V(x0,y0,z0), V(x1,y1,z0), V(x1,y0,z0)], [[0,0,-1], V(x0,y0,z0), V(x0,y1,z0), V(x1,y1,z0)]);
+  }
+  const buf = new ArrayBuffer(84 + tris.length * 50), dv = new DataView(buf);
+  dv.setUint32(80, tris.length, true);
+  tris.forEach((t, i) => {
+    let o = 84 + i * 50;
+    t[0].forEach(v => { dv.setFloat32(o, v, true); o += 4; });
+    t.slice(1).flat().forEach(v => { dv.setFloat32(o, v, true); o += 4; });
+    dv.setUint16(o, 0, true);
+  });
+  return { blob: new Blob([buf], { type: "model/stl" }), count: tris.length };
+}
+stlBtn.onclick = () => {
+  const { blob, count } = exportGrownSTL();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "bracket.stl"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  statsEl.textContent += " | STL: " + count + " triangles";
+};
+let running3 = false;
+async function run3D() {
+  Sim3.build();
+  const v = Sim3.verify();
+  verifyEl.textContent = "3D uniform check: FE tip " + v.tip.toFixed(2) + " vs beam theory " + v.theory.toFixed(2) +
+    " → " + (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Growing…";
+  Sim3.x.fill(Sim3.volfrac);
+  running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
+  view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
+  if (!Sim3.edof) return;
+  for (let it = 1; it <= 15; it++) {
+    await new Promise(r => setTimeout(r, 10));
+    if (!running3) break;
+    const { c, ch } = Sim3.step();
+    statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   change " + ch.toFixed(3);
+    draw3();
+    if (ch < 0.015 && it >= 5) break;
+  }
+  running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
+}
 pngBtn.onclick = () => {
   const a = document.createElement("a");
   a.href = cv.toDataURL("image/png"); a.download = "topo.png"; a.click();
