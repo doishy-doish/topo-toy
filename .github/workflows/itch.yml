@@ -15,7 +15,8 @@ jobs:
           python3 -c "import zipfile; z=zipfile.ZipFile('butler.zip'); bad=z.testzip(); print('zip ok, entries:', len(z.namelist()), 'bad:', bad); assert bad is None"
       - name: unpack
         run: |
-          unzip -o butler.zip -d butler && chmod +x butler/butler
+          python3 -c "import zipfile; z=zipfile.ZipFile('butler.zip'); print(z.namelist()); z.extractall('butler')"
+          chmod +x butler/butler
           ls -la butler/
       - name: stage web dir
         run: |
