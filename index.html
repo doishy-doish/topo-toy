@@ -366,14 +366,29 @@ const WasmCore = {
   view3(n) { const p = this.api.x3() / 8; return this.mod.HEAPF64.subarray(p, p + n); }
 };
 window.__wasmStatus = "pending";
-window.__memtrash = new MemTrash({});
-window.__memtrash.track("page", { size: 0, tag: "page", site: "index.html", permanent: true });
-window.__mtLog = function () { return window.__memtrash.log(); };
-// patrol: learn the expected max, auto-patch on growth. Generous budget (256 MB hard,
-// 1.5x growth over 32 MB) — the tripwire is for genuine leaks, not normal solving.
-window.__memtrash.setBudget({ maxBytes: 268435456, growthFactor: 1.5, growthMin: 33554432 });
-window.__mtStop = startShed(window.__memtrash, { everyMs: 30000, maxIdleMs: 120000,
-  onShed: function (rep) { try { console.warn("[memtrash] shed", JSON.stringify(rep)); } catch (e) {} } });
+// Vendor scripts can be absent from some embeds (the itch bundle used to stage
+// index.html only). Never let that kill the page: fall back to a no-op shim so
+// "grow it" still solves on the JS path. Full behavior returns wherever vendor/ ships.
+if (typeof MemTrash !== "undefined") {
+  window.__memtrash = new MemTrash({});
+  window.__memtrash.track("page", { size: 0, tag: "page", site: "index.html", permanent: true });
+  window.__mtLog = function () { return window.__memtrash.log(); };
+  // patrol: learn the expected max, auto-patch on growth. Generous budget (256 MB hard,
+  // 1.5x growth over 32 MB) — the tripwire is for genuine leaks, not normal solving.
+  window.__memtrash.setBudget({ maxBytes: 268435456, growthFactor: 1.5, growthMin: 33554432 });
+  if (typeof startShed !== "undefined") {
+    window.__mtStop = startShed(window.__memtrash, { everyMs: 30000, maxIdleMs: 120000,
+      onShed: function (rep) { try { console.warn("[memtrash] shed", JSON.stringify(rep)); } catch (e) {} } });
+  }
+} else {
+  window.__memtrash = {
+    track: function () { return false; }, untrack: function () { return true; },
+    touch: function () {}, live: function () { return 0; }, bytes: function () { return 0; },
+    log: function () { return '{"vendor":"missing"}'; }, sweep: function () { return {}; },
+    setBudget: function () {}, checkBudget: function () { return { over: false }; }
+  };
+  window.__mtLog = function () { return window.__memtrash.log(); };
+}
 WasmCore.init();
 async function runWasm2D(presetIdx) {
   const A = WasmCore.api, name = presetEl.value;
