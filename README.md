@@ -18,3 +18,10 @@ Method: Sigmund SIMP, Q4 plane stress, Jacobi-CG solve, sensitivity filter, Opti
 - [x] Stage 1: paint-your-own problem — walls, loads, holes on the grid. Same solver, same contract.
 - [ ] Stage 2: arbitrary geometry (STL voxelize, Gmsh interop, VTK export).
 - [ ] Stage 3: 3D + chunked parallel solve.
+
+## stages
+
+- [x] Stage 0: 2D SIMP, presets, verified 1.88% vs beam theory.
+- [x] Stage 1: paint-your-own problem - walls, loads, holes on the grid. Same solver, same contract.
+- [ ] Stage 2: arbitrary geometry (STL voxelize, Gmsh interop, VTK export).
+- [ ] Stage 3: 3D + chunked parallel solve.
