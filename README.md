@@ -16,7 +16,7 @@ Method: Sigmund SIMP, Q4 plane stress, Jacobi-CG solve, sensitivity filter, Opti
 
 - [x] Stage 0: 2D SIMP, presets, verified 1.88% vs beam theory.
 - [x] Stage 1: paint-your-own problem — walls, loads, holes on the grid. Same solver, same contract.
-- [ ] Stage 2: arbitrary geometry (STL voxelize, Gmsh interop, VTK export).
+- [x] Stage 2: arbitrary geometry — STL upload (binary+ASCII) → XY silhouette mask; export .msh (Gmsh) + .vtk (ParaView) alongside SVG/PNG. Verified: 10x4 plate keeps exactly 810/2400 cells.
 - [ ] Stage 3: 3D + chunked parallel solve.
 
 ## stages
