@@ -12,7 +12,6 @@ try {
   await page.waitForFunction(() => window.__wasmStatus && window.__wasmStatus !== "pending", { timeout: 30000 });
 } catch (e) { logLines.push("WASM-STATUS-TIMEOUT: " + String((e && e.message) || e).split("\n")[0]); }
 log("ENGINE:", await page.evaluate(() => window.__wasmStatus));
-log("ENGINE:"), await page.evaluate(() => window.__wasmStatus));
 async function runPreset(name, shot) {
   if (name) await page.selectOption("#preset", name);
   await page.click("#runBtn");
