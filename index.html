@@ -337,6 +337,11 @@ window.__wasmStatus = "pending";
 window.__memtrash = new MemTrash({});
 window.__memtrash.track("page", { size: 0, tag: "page", site: "index.html", permanent: true });
 window.__mtLog = function () { return window.__memtrash.log(); };
+// patrol: learn the expected max, auto-patch on growth. Generous budget (256 MB hard,
+// 1.5x growth over 32 MB) — the tripwire is for genuine leaks, not normal solving.
+window.__memtrash.setBudget({ maxBytes: 268435456, growthFactor: 1.5, growthMin: 33554432 });
+window.__mtStop = startShed(window.__memtrash, { everyMs: 30000, maxIdleMs: 120000,
+  onShed: function (rep) { try { console.warn("[memtrash] shed", JSON.stringify(rep)); } catch (e) {} } });
 WasmCore.init();
 async function runWasm2D(presetIdx) {
   const A = WasmCore.api, name = presetEl.value;
