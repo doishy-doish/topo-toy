@@ -61,6 +61,7 @@
 </div>
 <p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
 
+<script src="vendor/sim-wasm.js"></script>
 <script>
 "use strict";
 // ---------- element stiffness (Q4 plane stress, E=1, nu=0.3), computed once ----------
@@ -299,6 +300,101 @@ const Sim = {
   }
 };
 
+/* ---------- Stage 5: WASM core (same C++ lineage CI tests, running in-page) ---------- */
+const WasmCore = {
+  ready: false, mod: null, mem: 0, api: {},
+  async init() {
+    try {
+      if (typeof SimWasm === "undefined") { window.__wasmStatus = "js-fallback (no vendor)"; return false; }
+      this.mod = await SimWasm();
+      const c = this.mod.cwrap, A = this.api;
+      A.b2 = c("topo2d_build", "number", ["number"]);
+      A.nel2 = c("topo2d_nel", "number", []);
+      A.x2 = c("topo2d_x", "number", []);
+      A.ones2 = c("topo2d_ones", null, []);
+      A.reset2 = c("topo2d_reset", null, []);
+      A.verify2 = c("topo2d_verify", null, ["number"]);
+      A.step2 = c("topo2d_step", "number", []);
+      A.b3 = c("topo3d_build", "number", []);
+      A.nel3 = c("topo3d_nel", "number", []);
+      A.x3 = c("topo3d_x", "number", []);
+      A.ones3 = c("topo3d_ones", null, []);
+      A.reset3 = c("topo3d_reset", null, []);
+      A.verify3 = c("topo3d_verify", null, ["number"]);
+      A.step3 = c("topo3d_step", "number", []);
+      this.mem = this.mod._malloc(16);
+      this.ready = true;
+      window.__wasmStatus = "wasm";
+      return true;
+    } catch (e) { console.warn("[wasm] fallback to JS:", e); window.__wasmStatus = "js-fallback"; return false; }
+  },
+  tipCg() { const H = this.mod.HEAPF64; return { tip: H[this.mem / 8], cg: H[this.mem / 8 + 1] }; },
+  view2(n) { const p = this.api.x2() / 8; return this.mod.HEAPF64.subarray(p, p + n); },
+  view3(n) { const p = this.api.x3() / 8; return this.mod.HEAPF64.subarray(p, p + n); }
+};
+window.__wasmStatus = "pending";
+WasmCore.init();
+async function runWasm2D(presetIdx) {
+  const A = WasmCore.api, name = presetEl.value;
+  Sim.build(name);
+  const nel = Sim.nelx * Sim.nely;
+  A.b2(presetIdx); A.ones2(); A.verify2(WasmCore.mem);
+  let v = WasmCore.tipCg();
+  if (name === "mbb" || name === "lbracket")
+    verifyEl.textContent = "uniform-density solve: tip " + v.tip.toFixed(1) +
+      " (CG " + v.cg.toFixed(0) + " iters, engine:wasm). No textbook number — the grown truss is the test. Optimizing from 50% volume…";
+  else {
+    const Ib = Math.pow(Sim.Hh, 3) / 12, thb = Math.pow(Sim.L, 3) / (3 * Ib);
+    verifyEl.textContent = "uniform-density check: FE tip " + v.tip.toFixed(1) +
+      " vs beam theory " + thb.toFixed(1) + " → " +
+      (Math.abs(v.tip - thb) / thb * 100).toFixed(1) + "% off (CG " + v.cg.toFixed(0) + " iters, engine:wasm). Then optimizing from 50% volume…";
+  }
+  A.reset2();
+  Sim.x.set(WasmCore.view2(nel));
+  const prev = new Float64Array(Sim.x);
+  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
+  draw();
+  const stepSome = () => {
+    if (!running) return;
+    for (let k = 0; k < 2; k++) {
+      const c = A.step2();
+      iters++;
+      Sim.x.set(WasmCore.view2(nel));
+      let ch = 0;
+      for (let e = 0; e < nel; e++) { const d = Math.abs(Sim.x[e] - prev[e]); if (d > ch) ch = d; }
+      prev.set(Sim.x);
+      statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm";
+      if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
+    }
+    draw();
+    if (running) requestAnimationFrame(stepSome);
+  };
+  requestAnimationFrame(stepSome);
+}
+async function runWasm3D() {
+  const A = WasmCore.api;
+  Sim3.build();
+  const nel = 40 * 12 * 6;
+  A.b3(); A.ones3(); A.verify3(WasmCore.mem);
+  const v = WasmCore.tipCg();
+  const I3 = 6 * Math.pow(12, 3) / 12, th3 = Math.pow(40, 3) / (3 * I3);
+  verifyEl.textContent = "3D uniform check: FE tip " + v.tip.toFixed(2) + " vs beam theory " + th3.toFixed(2) +
+    " → " + (Math.abs(v.tip - th3) / th3 * 100).toFixed(1) + "% off (CG " + v.cg.toFixed(0) + " iters, engine:wasm). Growing…";
+  A.reset3();
+  Sim3.x.set(WasmCore.view3(nel));
+  running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
+  view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
+  for (let it = 1; it <= 15; it++) {
+    await new Promise(r => setTimeout(r, 10));
+    if (!running3) break;
+    const c = A.step3();
+    Sim3.x.set(WasmCore.view3(nel));
+    statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   engine:wasm";
+    draw3();
+  }
+  running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
+}
+
 // ---------- UI ----------
 const cv = document.getElementById("cv");
 const ctx2d = cv.getContext("2d");
@@ -337,6 +433,8 @@ function frame() {
 
 runBtn.onclick = () => {
   if (presetEl.value === "cantilever3d") { run3D(); return; }
+  const widx = { cantilever: 0, bridge: 1, mbb: 2, lbracket: 3 }[presetEl.value];
+  if (!paintMode && widx !== undefined && WasmCore.ready) { runWasm2D(widx); return; }
   if (paintMode) {
     Sim.build({ custom: true, fixed: [...paint.fixed], loads: [...paint.loads].map(n => [n, 0, -1]), holes: [...paint.holes] });
     verifyEl.textContent = "custom problem: " + paint.fixed.size + " fixed nodes, " + paint.loads.size + " loads, " +
@@ -859,6 +957,7 @@ stlBtn.onclick = () => {
 };
 let running3 = false;
 async function run3D() {
+  if (WasmCore.ready) { runWasm3D(); return; }
   Sim3.build();
   const v = Sim3.verify();
   verifyEl.textContent = "3D uniform check: FE tip " + v.tip.toFixed(2) + " vs beam theory " + v.theory.toFixed(2) +
