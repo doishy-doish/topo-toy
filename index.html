@@ -5,25 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>topo-toy — brackets grown in your browser</title>
 <style>
-  body { background:#0b0e13; color:#d7dee8; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:24px; text-align:center; }
-  h1 { font-size:20px; margin:0 0 4px; letter-spacing:1px; }
-  p.sub { color:#8b96a5; font-size:13px; margin:0 0 16px; }
-  #wrap { display:inline-block; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:16px; }
-  canvas { image-rendering:pixelated; border:1px solid #26303c; border-radius:6px; max-width:92vw; }
-  #bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:14px 0 6px; font-size:13px; }
+  body { background:#0b0e13; color:#d7dee8; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:16px; text-align:center; }
+  p.sub { color:#8b96a5; font-size:12px; margin:12px 0 0; }
+  #topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; max-width:1180px; margin:0 auto 10px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:10px 16px; }
+  #logo { font-size:17px; letter-spacing:1px; color:#fff; }
+  #logo strong { color:#4d9fff; }
+  #topmeta { font-size:12px; color:#8b96a5; display:flex; gap:14px; }
+  #engineBadge { color:#9fe8b4; }
+  #wb { display:flex; gap:12px; justify-content:center; align-items:stretch; max-width:1180px; margin:0 auto; text-align:left; }
+  #tree { width:190px; flex:0 0 190px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 14px; font-size:12px; }
+  .thead { font-size:13px; color:#fff; border-bottom:1px solid #26303c; padding-bottom:6px; margin-bottom:4px; letter-spacing:1px; }
+  .tsec { color:#4d9fff; margin:10px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+  .trow { color:#d7dee8; line-height:1.5; }
+  #viewport { flex:1 1 480px; min-width:0; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 16px; }
+  #cv { width:100%; height:auto; max-width:720px; display:block; margin:8px auto; background:#060a12; border:1px solid #26303c; border-radius:6px; }
+  #legend { width:78px; flex:0 0 78px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 8px; font-size:11px; text-align:center; color:#8b96a5; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  #legTitle { color:#d7dee8; }
+  #legCv { width:28px; height:256px; border:1px solid #26303c; border-radius:3px; }
+  #statusbar { max-width:1180px; margin:10px auto 0; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:8px 16px; font-size:12px; color:#8b96a5; display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
+  #statusbar b { color:#d7dee8; font-weight:normal; }
+  #bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:2px 0 6px; font-size:13px; }
   button, select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
   button:hover { background:#242f42; }
   button:disabled { opacity:.45; cursor:default; }
-  #stats { font-size:13px; color:#9fe8b4; min-height:20px; margin-top:8px; white-space:pre-wrap; }
-  #verify { font-size:12px; color:#8b96a5; margin-top:6px; white-space:pre-wrap; }
+  #stats { font-size:13px; color:#9fe8b4; min-height:20px; margin-top:8px; white-space:pre-wrap; text-align:center; }
+  #verify { font-size:12px; color:#8b96a5; margin-top:6px; white-space:pre-wrap; text-align:center; }
   a { color:#7db8ff; }
+  @media (max-width:900px) {
+    #wb { flex-wrap:wrap; }
+    #tree { flex:1 1 100%; width:auto; }
+    #legend { flex:1 1 100%; width:auto; flex-direction:row; justify-content:center; }
+    #legCv { width:120px; height:14px; }
+  }
 </style>
 </head>
 <body>
-<h1>topo-toy</h1>
-<p class="sub">SIMP topology optimization, one file, zero install, zero license server. Cantilever + bridge + MBB + L-bracket benchmarks, SVG/PNG export for the laser cutter.</p>
-<div id="wrap">
-  <canvas id="cv"></canvas>
+<div id="topbar"><span id="logo">topo<strong>workbench</strong></span><span id="topmeta"><span id="engineBadge">engine:…</span><span id="memBadge"></span></span></div>
+<div id="wb">
+  <div id="tree"><div class="thead">Outline</div>
+    <div class="tsec">Geometry</div><div class="trow" id="otGeo">—</div>
+    <div class="tsec">Mesh</div><div class="trow" id="otMesh">—</div>
+    <div class="tsec">Setup</div><div class="trow" id="otSetup">—</div>
+    <div class="tsec">Solution</div><div class="trow" id="otStatus">Ready — press "grow it"</div>
+    <div class="tsec">Results</div><div class="trow" id="otResult">Topology Density</div>
+  </div>
+  <div id="viewport">
   <div id="bar">
     <select id="preset">
       <option value="cantilever">cantilever (Euler-Bernoulli check)</option>
@@ -56,9 +82,13 @@
     <button id="mshBtn">export .msh</button>
     <button id="vtkBtn">export .vtk</button>
   </div>
+  <canvas id="cv"></canvas>
   <div id="stats">press "grow it"</div>
   <div id="verify"></div>
-</div>
+  </div><!-- /viewport -->
+  <div id="legend"><div id="legTitle">Topology<br>Density</div><div id="legMax">1.00</div><canvas id="legCv" width="28" height="256"></canvas><div id="legMin">0.00</div></div>
+</div><!-- /wb -->
+<div id="statusbar"><span id="sbMesh">mesh: —</span><span id="sbSolver">solver: —</span><span id="sbMem">mem: —</span></div>
 <p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
 
 <script src="vendor/sim-wasm.js"></script>
@@ -416,16 +446,78 @@ const pngBtn = document.getElementById("pngBtn");
 const presetEl = document.getElementById("preset");
 let running = false, iters = 0;
 
-function draw() {
-  const { nelx, nely, x } = Sim;
+/* ---------- workbench rendering: smooth result contours, not pixels ---------- */
+function cmap(v) { // jet-style: void deep-blue -> solid red (Ansys result look)
+  v = Math.max(0, Math.min(1, v));
+  const cl = (x) => Math.max(0, Math.min(1, x));
+  return [Math.round(255 * cl(1.5 - Math.abs(4 * v - 3))),
+          Math.round(255 * cl(1.5 - Math.abs(4 * v - 2))),
+          Math.round(255 * cl(1.5 - Math.abs(4 * v - 1)))];
+}
+const wbOC = document.createElement("canvas");
+const wbOctx = wbOC.getContext("2d");
+let wbOW = 0, wbOH = 0;
+function renderField(field, nelx, nely) {
+  // returns {min, max}; draws smooth interpolated contours + faint mesh edges
+  if (wbOW !== nelx || wbOH !== nely) { wbOC.width = nelx; wbOC.height = nely; wbOW = nelx; wbOH = nely; }
+  const img = wbOctx.createImageData(nelx, nely);
+  const d = img.data;
+  let mn = Infinity, mx = -Infinity;
+  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+    const v = field[ex * nely + ey];
+    if (v < mn) mn = v; if (v > mx) mx = v;
+    const [r, g, b] = cmap(v);
+    const o = ((nely - 1 - ey) * nelx + ex) * 4;
+    d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+  }
+  wbOctx.putImageData(img, 0, 0);
   const px = Math.max(2, Math.floor(720 / nelx));
   cv.width = nelx * px; cv.height = nely * px;
-  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
-    const v = x[ex * nely + ey];
-    const g = Math.round(255 * (1 - v));
-    ctx2d.fillStyle = "rgb(" + g + "," + g + "," + g + ")";
-    ctx2d.fillRect(ex * px, (nely - 1 - ey) * px, px, px);
+  ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = "high";
+  ctx2d.drawImage(wbOC, 0, 0, cv.width, cv.height);
+  ctx2d.strokeStyle = "rgba(6,10,18,0.28)"; ctx2d.lineWidth = 1; // faint element edges
+  ctx2d.beginPath();
+  for (let ix = 0; ix <= nelx; ix++) { ctx2d.moveTo(ix * px + 0.5, 0); ctx2d.lineTo(ix * px + 0.5, cv.height); }
+  for (let iy = 0; iy <= nely; iy++) { ctx2d.moveTo(0, iy * px + 0.5); ctx2d.lineTo(cv.width, iy * px + 0.5); }
+  ctx2d.stroke();
+  return { min: mn, max: mx };
+}
+const wbTxtCache = {};
+function wbSet(id, s) { if (wbTxtCache[id] !== s) { wbTxtCache[id] = s; document.getElementById(id).textContent = s; } }
+function syncPanels(field, info) {
+  // info: {geo, nodes, els, free, fixedN, loadsN}
+  wbSet("otGeo", info.geo);
+  wbSet("otMesh", info.nodes + " nodes · " + info.els + " elements");
+  wbSet("otSetup", info.fixedN + " fixed DOF · " + info.loadsN + " load · 50% vol");
+  const st = (typeof running !== "undefined" && running) || (typeof running3 !== "undefined" && running3)
+    ? "Solving… (iter " + (typeof iters !== "undefined" ? iters : "?") + ")" : "Solved";
+  wbSet("otStatus", st);
+  wbSet("legMin", field.min.toFixed(2));
+  wbSet("legMax", field.max.toFixed(2));
+  wbSet("sbMesh", "mesh: " + info.nodes + " nodes · " + info.els + " els · " + info.free + " free DOF");
+  wbSet("sbSolver", "solver: CG · " + (window.__wasmStatus || "?"));
+  wbSet("sbMem", "mem: " + (window.__memtrash ? window.__memtrash.live() : "?") + " areas");
+  wbSet("engineBadge", "engine:" + (window.__wasmStatus || "?"));
+  wbSet("memBadge", "mem:" + (window.__memtrash ? window.__memtrash.live() : "?"));
+}
+(function initLegend() {
+  const lc = document.getElementById("legCv").getContext("2d");
+  for (let y = 0; y < 256; y++) {
+    const [r, g, b] = cmap(1 - y / 255);
+    lc.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+    lc.fillRect(0, y, 28, 1);
   }
+})();
+
+function draw() {
+  const { nelx, nely, x } = Sim;
+  const f = renderField(x, nelx, nely);
+  syncPanels(f, {
+    geo: (presetEl.value || "cantilever") + " · " + nelx + "×" + nely + " · Q4 plane stress",
+    nodes: (nelx + 1) * (nely + 1), els: nelx * nely,
+    free: Sim.free ? Sim.free.length : 0,
+    fixedN: Sim.fixed ? Sim.fixed.size : 0, loadsN: 1
+  });
   drawPaint();
 }
 
@@ -914,15 +1006,14 @@ document.getElementById("sliceBtn").onclick = () => { view3mode = "slice"; draw3
 sliceZ.oninput = () => { if (view3mode === "slice") draw3(); };
 function draw3(field) {
   const { nelx, nely } = Sim3;
-  const f = field || (() => { const o = new Float64Array(nelx * nely); Sim3.project(o); return o; })();
-  const px = Math.max(2, Math.floor(720 / nelx));
-  cv.width = nelx * px; cv.height = nely * px;
-  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
-    const v = (view3mode === "slice") ? Sim3slice()[ex * nely + ey] : f[ex * nely + ey];
-    const g = Math.round(255 * (1 - v));
-    ctx2d.fillStyle = "rgb(" + g + "," + g + "," + g + ")";
-    ctx2d.fillRect(ex * px, (nely - 1 - ey) * px, px, px);
-  }
+  const f = (typeof view3mode !== "undefined" && view3mode === "slice") ? Sim3slice()
+    : (field || (() => { const o = new Float64Array(nelx * nely); Sim3.project(o); return o; })());
+  const r = renderField(f, nelx, nely);
+  syncPanels(r, {
+    geo: "cantilever 3D · " + Sim3.nelx + "×" + Sim3.nely + "×" + Sim3.nelz + " · hex",
+    nodes: (Sim3.nelx + 1) * (Sim3.nely + 1) * (Sim3.nelz + 1), els: Sim3.nelx * Sim3.nely * Sim3.nelz,
+    free: 0, fixedN: 0, loadsN: 1
+  });
 }
 function Sim3slice() {
   const { nelx, nely } = Sim3, o = new Float64Array(nelx * nely);
