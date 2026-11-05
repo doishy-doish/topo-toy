@@ -62,6 +62,7 @@
 <p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
 
 <script src="vendor/sim-wasm.js"></script>
+<script src="vendor/memtrash.js"></script>
 <script>
 "use strict";
 // ---------- element stiffness (Q4 plane stress, E=1, nu=0.3), computed once ----------
@@ -333,6 +334,9 @@ const WasmCore = {
   view3(n) { const p = this.api.x3() / 8; return this.mod.HEAPF64.subarray(p, p + n); }
 };
 window.__wasmStatus = "pending";
+window.__memtrash = new MemTrash({});
+window.__memtrash.track("page", { size: 0, tag: "page", site: "index.html", permanent: true });
+window.__mtLog = function () { return window.__memtrash.log(); };
 WasmCore.init();
 async function runWasm2D(presetIdx) {
   const A = WasmCore.api, name = presetEl.value;
@@ -351,6 +355,7 @@ async function runWasm2D(presetIdx) {
   }
   A.reset2();
   Sim.x.set(WasmCore.view2(nel));
+  window.__memtrash.track("solve-x2", { size: nel * 8, tag: "solve-mirror", site: "runWasm2D", permanent: true });
   const prev = new Float64Array(Sim.x);
   iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
   draw();
@@ -363,7 +368,7 @@ async function runWasm2D(presetIdx) {
       let ch = 0;
       for (let e = 0; e < nel; e++) { const d = Math.abs(Sim.x[e] - prev[e]); if (d > ch) ch = d; }
       prev.set(Sim.x);
-      statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm";
+      statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm   mem:" + window.__memtrash.live();
       if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
     }
     draw();
@@ -389,7 +394,7 @@ async function runWasm3D() {
     if (!running3) break;
     const c = A.step3();
     Sim3.x.set(WasmCore.view3(nel));
-    statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   engine:wasm";
+    statsEl.textContent = "3D iter " + it + "/15   compliance " + c.toFixed(1) + "   engine:wasm   mem:" + window.__memtrash.live();
     draw3();
   }
   running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
