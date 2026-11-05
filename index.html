@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>topo-toy — brackets grown in your browser</title>
+<style>
+  body { background:#0b0e13; color:#d7dee8; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:24px; text-align:center; }
+  h1 { font-size:20px; margin:0 0 4px; letter-spacing:1px; }
+  p.sub { color:#8b96a5; font-size:13px; margin:0 0 16px; }
+  #wrap { display:inline-block; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:16px; }
+  canvas { image-rendering:pixelated; border:1px solid #26303c; border-radius:6px; max-width:92vw; }
+  #bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:14px 0 6px; font-size:13px; }
+  button, select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
+  button:hover { background:#242f42; }
+  button:disabled { opacity:.45; cursor:default; }
+  #stats { font-size:13px; color:#9fe8b4; min-height:20px; margin-top:8px; white-space:pre-wrap; }
+  #verify { font-size:12px; color:#8b96a5; margin-top:6px; white-space:pre-wrap; }
+  a { color:#7db8ff; }
+</style>
+</head>
+<body>
+<h1>topo-toy</h1>
+<p class="sub">SIMP topology optimization, one file, zero install, zero license server. Cantilever + bridge benchmarks, SVG/PNG export for the laser cutter.</p>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="bar">
+    <select id="preset">
+      <option value="cantilever">cantilever (Euler-Bernoulli check)</option>
+      <option value="bridge">bridge (both ends pinned, center load)</option>
+    </select>
+    <button id="runBtn">grow it</button>
+    <button id="svgBtn" disabled>download SVG</button>
+    <button id="pngBtn" disabled>download PNG</button>
+  </div>
+  <div id="stats">press "grow it"</div>
+  <div id="verify"></div>
+</div>
+<p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
+
+<script>
+"use strict";
+// ---------- element stiffness (Q4 plane stress, E=1, nu=0.3), computed once ----------
+const NU = 0.3;
+const KE = (function () {
+  const k = [0.5 - NU / 6, 0.125 + NU / 8, -0.25 - NU / 12, -0.125 + 3 * NU / 8,
+             -0.25 + NU / 12, -0.125 - NU / 8, NU / 6, 0.125 - 3 * NU / 8];
+  const A11 = [[12,3,-6,-3],[3,12,3,0],[-6,3,12,-3],[-3,0,-3,12]];
+  const A12 = [[-6,-3,0,3],[-3,-6,-3,-6],[0,-3,-6,3],[3,-6,3,-6]];
+  const B11 = [[-4,3,-2,9],[3,-4,-9,4],[-2,-9,-4,-3],[9,4,-3,-4]];
+  const B12 = [[2,-3,4,-9],[-3,2,9,-2],[4,9,2,3],[-9,-2,3,2]];
+  const s = 1 / ((1 - NU * NU) * 24);
+  const ke = [];
+  for (let i = 0; i < 8; i++) { ke.push([]); for (let j = 0; j < 8; j++) ke[i].push(0); }
+  const blk = (M, w, r0, c0) => { for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) ke[r0 + i][c0 + j] += w * M[i][j]; };
+  blk(A11, s, 0, 0); blk(A12, s, 0, 4); blk(A11, s, 4, 4);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) ke[4 + i][j] += s * A12[j][i];
+  blk(B11, s * NU, 0, 0); blk(B12, s * NU, 0, 4); blk(B11, s * NU, 4, 4);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) ke[4 + i][j] += s * NU * B12[j][i];
+  return ke;
+})();
+
+const Sim = {
+  nelx: 120, nely: 20, volfrac: 0.5, penal: 3.0, rmin: 2.4,
+  Emin: 1e-9, E0: 1.0,
+  x: null, edof: null, rows: null, cols: null, rowPtr: null, diagIdx: null,
+  fixed: null, free: null, F: null, H: null, Hs: null, loadNode: 0,
+  L: 120, Hh: 20,
+
+  // node id = ix*(nely+1)+iy
+  nid(ix, iy) { return ix * (this.nely + 1) + iy; },
+
+  build(preset) {
+    const { nelx, nely } = this;
+    const nn = (nelx + 1) * (nely + 1), ndof = 2 * nn;
+    // element dofs
+    this.edof = [];
+    for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+      const n1 = this.nid(ex, ey), n2 = this.nid(ex + 1, ey),
+            n3 = this.nid(ex + 1, ey + 1), n4 = this.nid(ex, ey + 1);
+      this.edof.push([2*n1, 2*n1+1, 2*n2, 2*n2+1, 2*n3, 2*n3+1, 2*n4, 2*n4+1]);
+    }
+    // sparsity pattern (fixed — only values change with density)
+    const rowSets = [];
+    for (let i = 0; i < ndof; i++) rowSets.push(new Set());
+    for (const e of this.edof) for (const a of e) for (const b of e) rowSets[a].add(b);
+    this.rowPtr = new Int32Array(ndof + 1); this.diagIdx = new Int32Array(ndof);
+    let nnz = 0;
+    const cols = [];
+    for (let i = 0; i < ndof; i++) {
+      const s = [...rowSets[i]].sort((p, q) => p - q);
+      this.rowPtr[i] = nnz; this.diagIdx[i] = nnz + s.indexOf(i);
+      for (const c of s) cols.push(c);
+      nnz += s.length;
+    }
+    this.rowPtr[ndof] = nnz;
+    this.cols = new Int32Array(cols);
+    this.vals = new Float64Array(nnz);
+    // scatter positions are fixed (pattern never changes) — precompute once
+    this.scatP = new Int32Array(this.edof.length * 64);
+    this.scatK = new Uint8Array(this.edof.length * 64);
+    this.KEF = KE.flat();
+    for (let e = 0; e < this.edof.length; e++) {
+      const ed = this.edof[e];
+      for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) {
+        const r = ed[a], c = ed[b];
+        let lo = this.rowPtr[r], hi = this.rowPtr[r + 1] - 1, pos = -1;
+        while (lo <= hi) { const mm = (lo + hi) >> 1; if (this.cols[mm] === c) { pos = mm; break; } else if (this.cols[mm] < c) lo = mm + 1; else hi = mm - 1; }
+        this.scatP[e * 64 + a * 8 + b] = pos; this.scatK[e * 64 + a * 8 + b] = a * 8 + b;
+      }
+    }
+    // loads + fixtures
+    const fixed = new Set();
+    this.F = new Float64Array(ndof);
+    if (preset === "cantilever") {
+      for (let iy = 0; iy <= nely; iy++) { fixed.add(2 * this.nid(0, iy)); fixed.add(2 * this.nid(0, iy) + 1); }
+      this.loadNode = this.nid(nelx, nely >> 1);
+      this.F[2 * this.loadNode + 1] = -1;
+      this.L = nelx; this.Hh = nely;
+    } else { // bridge: pinned bottom corners, center-bottom load
+      for (const d of [0, 1]) { fixed.add(2 * this.nid(0, 0) + d); fixed.add(2 * this.nid(nelx, 0) + d); }
+      this.loadNode = this.nid(nelx >> 1, 0);
+      this.F[2 * this.loadNode + 1] = -1;
+      this.L = nelx; this.Hh = nely;
+    }
+    this.fixed = fixed;
+    this.free = [];
+    for (let i = 0; i < ndof; i++) if (!fixed.has(i)) this.free.push(i);
+    // sensitivity filter weights
+    const nel = nelx * nely, r = this.rmin;
+    this.H = []; this.Hs = new Float64Array(nel);
+    for (let e1 = 0; e1 < nel; e1++) {
+      const i1 = (e1 / nely) | 0, j1 = e1 % nely, row = [];
+      const i0 = Math.max(0, i1 - Math.ceil(r)), i9 = Math.min(nelx - 1, i1 + Math.ceil(r));
+      const j0 = Math.max(0, j1 - Math.ceil(r)), j9 = Math.min(nely - 1, j1 + Math.ceil(r));
+      for (let i2 = i0; i2 <= i9; i2++) for (let j2 = j0; j2 <= j9; j2++) {
+        const fac = r - Math.hypot(i1 - i2, j1 - j2);
+        if (fac > 0) { const e2 = i2 * nely + j2; row.push([e2, fac]); this.Hs[e1] += fac; }
+      }
+      this.H.push(row);
+    }
+    this.x = new Float64Array(nel).fill(this.volfrac);
+  },
+
+  assemble() {
+    const { edof, vals, scatP, scatK, KEF } = this;
+    vals.fill(0);
+    for (let e = 0; e < edof.length; e++) {
+      const s = this.Emin + Math.pow(this.x[e], this.penal) * (this.E0 - this.Emin);
+      const base = e * 64;
+      for (let k = 0; k < 64; k++) vals[scatP[base + k]] += s * KEF[scatK[base + k]];
+    }
+  },
+
+  matvec(v, out) {
+    const { rowPtr, cols, vals } = this;
+    for (let i = 0; i < rowPtr.length - 1; i++) {
+      let s = 0;
+      for (let k = rowPtr[i]; k < rowPtr[i + 1]; k++) s += vals[k] * v[cols[k]];
+      out[i] = s;
+    }
+  },
+
+  // CG on free DOFs, Jacobi preconditioned
+  solve(tol = 1e-6, maxIt = 2000) {
+    const n = this.free.length, idx = this.free;
+    const u = new Float64Array(this.F.length);
+    const r = new Float64Array(n), z = new Float64Array(n), p = new Float64Array(n), Ap = new Float64Array(this.F.length);
+    for (let i = 0; i < n; i++) r[i] = this.F[idx[i]];
+    const D = new Float64Array(n);
+    for (let i = 0; i < n; i++) { const d = this.vals[this.diagIdx[idx[i]]]; D[i] = d !== 0 ? 1 / d : 1; z[i] = r[i] * D[i]; p[i] = z[i]; }
+    let rz = 0; for (let i = 0; i < n; i++) rz += r[i] * z[i];
+    const r0 = Math.sqrt(rz) || 1;
+    const full = new Float64Array(this.F.length);
+    let it = 0;
+    for (; it < maxIt; it++) {
+      for (let i = 0; i < n; i++) full[idx[i]] = p[i];
+      this.matvec(full, Ap);
+      let pAp = 0; for (let i = 0; i < n; i++) pAp += p[i] * Ap[idx[i]];
+      if (pAp === 0) break;
+      const a = rz / pAp;
+      for (let i = 0; i < n; i++) { u[idx[i]] += a * p[i]; r[i] -= a * Ap[idx[i]]; }
+      for (let i = 0; i < n; i++) z[i] = r[i] * D[i];
+      let rz2 = 0; for (let i = 0; i < n; i++) rz2 += r[i] * z[i];
+      if (Math.sqrt(rz2) / r0 < tol) { it++; break; }
+      const b = rz2 / rz; rz = rz2;
+      for (let i = 0; i < n; i++) p[i] = z[i] + b * p[i];
+    }
+    return { u, iters: it };
+  },
+
+  compliance(u) {
+    const { edof, x } = this;
+    let c = 0;
+    const dc = new Float64Array(x.length);
+    const ue = new Float64Array(8);
+    for (let e = 0; e < edof.length; e++) {
+      const ed = edof[e];
+      for (let a = 0; a < 8; a++) ue[a] = u[ed[a]];
+      let e_ = 0;
+      for (let a = 0; a < 8; a++) { let s = 0; for (let b = 0; b < 8; b++) s += KE[a][b] * ue[b]; e_ += ue[a] * s; }
+      const xs = Math.pow(x[e], this.penal) * (this.E0 - this.Emin);
+      c += xs * e_;
+      dc[e] = -this.penal * Math.pow(x[e], this.penal - 1) * (this.E0 - this.Emin) * e_;
+    }
+    return { c, dc };
+  },
+
+  step() {
+    this.assemble();
+    const { u } = this.solve();
+    const { c, dc } = this.compliance(u);
+    const nel = this.x.length, x = this.x;
+    // filter
+    const dcf = new Float64Array(nel);
+    for (let e1 = 0; e1 < nel; e1++) {
+      let s = 0;
+      for (const [e2, w] of this.H[e1]) s += w * x[e2] * dc[e2];
+      dcf[e1] = s / (this.Hs[e1] * Math.max(1e-3, x[e1]));
+    }
+    // OC update
+    const move = 0.2;
+    let l1 = 0, l2 = 1e9;
+    const xnew = new Float64Array(nel);
+    while (l2 - l1 > 1e-4) {
+      const lm = 0.5 * (l1 + l2);
+      let vol = 0;
+      for (let e = 0; e < nel; e++) {
+        const b = x[e] * Math.sqrt(Math.max(0, -dcf[e] / lm));
+        const lo = Math.max(0.001, x[e] - move), hi = Math.min(1, x[e] + move);
+        xnew[e] = Math.min(hi, Math.max(lo, Math.min(1, b)));
+        vol += xnew[e];
+      }
+      if (vol - this.volfrac * nel > 0) l1 = lm; else l2 = lm;
+    }
+    let ch = 0;
+    for (let e = 0; e < nel; e++) { ch = Math.max(ch, Math.abs(xnew[e] - x[e])); x[e] = xnew[e]; }
+    return { c, ch };
+  },
+
+  // uniform-density solve -> tip deflection vs Euler-Bernoulli
+  verify() {
+    this.x.fill(1);
+    this.assemble();
+    const { u, iters } = this.solve();
+    const tip = Math.abs(u[2 * this.loadNode + 1]);
+    const I = 1 * Math.pow(this.Hh, 3) / 12;
+    const theory = 1 * Math.pow(this.L, 3) / (3 * this.E0 * I);
+    return { tip, theory, err: Math.abs(tip - theory) / theory, cgIters: iters };
+  }
+};
+
+// ---------- UI ----------
+const cv = document.getElementById("cv");
+const ctx2d = cv.getContext("2d");
+const statsEl = document.getElementById("stats");
+const verifyEl = document.getElementById("verify");
+const runBtn = document.getElementById("runBtn");
+const svgBtn = document.getElementById("svgBtn");
+const pngBtn = document.getElementById("pngBtn");
+const presetEl = document.getElementById("preset");
+let running = false, iters = 0;
+
+function draw() {
+  const { nelx, nely, x } = Sim;
+  const px = Math.max(2, Math.floor(720 / nelx));
+  cv.width = nelx * px; cv.height = nely * px;
+  for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+    const v = x[ex * nely + ey];
+    const g = Math.round(255 * (1 - v));
+    ctx2d.fillStyle = "rgb(" + g + "," + g + "," + g + ")";
+    ctx2d.fillRect(ex * px, (nely - 1 - ey) * px, px, px);
+  }
+}
+
+function frame() {
+  if (!running) return;
+  for (let k = 0; k < 2; k++) {
+    const { c, ch } = Sim.step();
+    iters++;
+    statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2);
+    if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
+  }
+  draw();
+  if (running) requestAnimationFrame(frame);
+}
+
+runBtn.onclick = () => {
+  Sim.build(presetEl.value);
+  const v = Sim.verify();
+  verifyEl.textContent = "uniform-density check: FE tip " + v.tip.toFixed(1) +
+    " vs beam theory " + v.theory.toFixed(1) + " → " +
+    (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Then optimizing from 50% volume…";
+  Sim.x.fill(Sim.volfrac);
+  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
+  draw();
+  requestAnimationFrame(frame);
+};
+
+// marching-squares contour at rho=0.5 -> raw segments as one stroked path (cutters cut strokes fine)
+function contourSVG() {
+  const { nelx, nely, x } = Sim;
+  const g = (ix, iy) => (ix < 0 || iy < 0 || ix >= nelx || iy >= nely) ? 0 : x[ix * nely + iy];
+  const S = 10, segs = [];
+  const pt = (ix, iy, fx, fy) => [(ix + fx) * S, (nely - iy - fy) * S];
+  for (let ix = -1; ix <= nelx; ix++) for (let iy = -1; iy <= nely; iy++) {
+    const a = g(ix, iy) > 0.5 ? 8 : 0, b = g(ix + 1, iy) > 0.5 ? 4 : 0,
+          c = g(ix + 1, iy + 1) > 0.5 ? 2 : 0, d = g(ix, iy + 1) > 0.5 ? 1 : 0;
+    const cs = a | b | c | d;
+    if (cs === 0 || cs === 15) continue;
+    const T = pt(ix, iy, 0.5, 0), R = pt(ix, iy, 1, 0.5), B = pt(ix, iy, 0.5, 1), Lp = pt(ix, iy, 0, 0.5);
+    const seg = (p, q) => segs.push("M" + p[0] + " " + p[1] + "L" + q[0] + " " + q[1]);
+    switch (cs) {
+      case 1: case 14: seg(Lp, B); break;
+      case 2: case 13: seg(B, R); break;
+      case 3: case 12: seg(Lp, R); break;
+      case 4: case 11: seg(T, R); break;
+      case 6: case 9: seg(B, T); break;
+      case 7: case 8: seg(Lp, T); break;
+      case 5: seg(Lp, T); seg(B, R); break;
+      case 10: seg(T, R); seg(Lp, B); break;
+    }
+  }
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (nelx + 1) * S + '" height="' + (nely + 1) * S +
+    '" viewBox="0 0 ' + (nelx + 1) * S + " " + (nely + 1) * S + '"><path d="' + segs.join("") +
+    '" fill="none" stroke="black" stroke-width="1"/></svg>';
+}
+
+function download(name, text, type) {
+  const b = new Blob([text], { type });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+svgBtn.onclick = () => download("topo.svg", contourSVG(), "image/svg+xml");
+pngBtn.onclick = () => {
+  const a = document.createElement("a");
+  a.href = cv.toDataURL("image/png"); a.download = "topo.png"; a.click();
+};
+</script>
+</body>
+</html>
