@@ -21,13 +21,15 @@
 </head>
 <body>
 <h1>topo-toy</h1>
-<p class="sub">SIMP topology optimization, one file, zero install, zero license server. Cantilever + bridge benchmarks, SVG/PNG export for the laser cutter.</p>
+<p class="sub">SIMP topology optimization, one file, zero install, zero license server. Cantilever + bridge + MBB + L-bracket benchmarks, SVG/PNG export for the laser cutter.</p>
 <div id="wrap">
   <canvas id="cv"></canvas>
   <div id="bar">
     <select id="preset">
       <option value="cantilever">cantilever (Euler-Bernoulli check)</option>
       <option value="bridge">bridge (both ends pinned, center load)</option>
+      <option value="mbb">mbb (simply supported, top-center load)</option>
+      <option value="lbracket">L-bracket 60x60 (fixed top, tip load)</option>
       <option value="cantilever3d">cantilever 3D 40×12×6 (beam-theory check)</option>
     </select>
     <button id="runBtn">grow it</button>
@@ -92,6 +94,8 @@ const Sim = {
   nid(ix, iy) { return ix * (this.nely + 1) + iy; },
 
   build(preset) {
+    if (preset === "lbracket") { this.nelx = 60; this.nely = 60; this.rmin = 2.0; }
+    else if (typeof preset === "string") { this.nelx = 120; this.nely = 20; this.rmin = 2.4; }
     const { nelx, nely } = this;
     const nn = (nelx + 1) * (nely + 1), ndof = 2 * nn;
     // element dofs
@@ -138,7 +142,23 @@ const Sim = {
         loads.push([this.nid(nelx, nely >> 1), 0, -1]);
         this.L = nelx; this.Hh = nely;
         this.loadNode = this.nid(nelx, nely >> 1);
-      } else { // bridge
+      } else if (preset === "bridge") {
+        for (const d of [0, 1]) { fixed.add(2 * this.nid(0, 0) + d); fixed.add(2 * this.nid(nelx, 0) + d); }
+        loads.push([this.nid(nelx >> 1, 0), 0, -1]);
+        this.L = nelx; this.Hh = nely;
+        this.loadNode = this.nid(nelx >> 1, 0);
+      } else if (preset === "mbb") {
+        fixed.add(2 * this.nid(0, 0)); fixed.add(2 * this.nid(0, 0) + 1); fixed.add(2 * this.nid(nelx, 0) + 1);
+        loads.push([this.nid(nelx >> 1, nely), 0, -1]);
+        this.L = nelx; this.Hh = nely;
+        this.loadNode = this.nid(nelx >> 1, nely);
+      } else if (preset === "lbracket") {
+        for (let ix = 0; ix <= 30; ix++) { fixed.add(2 * this.nid(ix, nely)); fixed.add(2 * this.nid(ix, nely) + 1); }
+        loads.push([this.nid(nelx, 15), 0, -1]);
+        for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) if (ex >= 30 && ey >= 30) holes.add(ex * nely + ey);
+        this.L = nelx; this.Hh = nely;
+        this.loadNode = this.nid(nelx, 15);
+      } else { // legacy fallback: bridge
         for (const d of [0, 1]) { fixed.add(2 * this.nid(0, 0) + d); fixed.add(2 * this.nid(nelx, 0) + d); }
         loads.push([this.nid(nelx >> 1, 0), 0, -1]);
         this.L = nelx; this.Hh = nely;
@@ -324,7 +344,10 @@ runBtn.onclick = () => {
   } else {
     Sim.build(presetEl.value);
     const v = Sim.verify();
-    verifyEl.textContent = "uniform-density check: FE tip " + v.tip.toFixed(1) +
+    const noTheory = (presetEl.value === "mbb" || presetEl.value === "lbracket");
+    verifyEl.textContent = noTheory ? "uniform-density solve: tip " + v.tip.toFixed(1) +
+      " (CG " + v.cgIters + " iters). No textbook number — the grown truss is the test. Optimizing from 50% volume…" :
+      "uniform-density check: FE tip " + v.tip.toFixed(1) +
       " vs beam theory " + v.theory.toFixed(1) + " → " +
       (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Then optimizing from 50% volume…";
   }
