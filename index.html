@@ -442,7 +442,7 @@ runBtn.onclick = () => {
   } else {
     Sim.build(presetEl.value);
     const v = Sim.verify();
-    const noTheory = (presetEl.value === "mbb" || presetEl.value === "lbracket");
+    const noTheory = (presetEl.value !== "cantilever");
     verifyEl.textContent = noTheory ? "uniform-density solve: tip " + v.tip.toFixed(1) +
       " (CG " + v.cgIters + " iters). No textbook number — the grown truss is the test. Optimizing from 50% volume…" :
       "uniform-density check: FE tip " + v.tip.toFixed(1) +
