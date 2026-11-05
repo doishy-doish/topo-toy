@@ -5,6 +5,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 await page.goto("https://doishy-doish.github.io/topo-toy/", { waitUntil: "networkidle" });
+await page.waitForFunction(() => window.__wasmStatus && window.__wasmStatus !== "pending", { timeout: 30000 });
+console.log("ENGINE:", await page.evaluate(() => window.__wasmStatus));
 async function runPreset(name, shot) {
   if (name) await page.selectOption("#preset", name);
   await page.click("#runBtn");
