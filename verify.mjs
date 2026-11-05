@@ -27,6 +27,18 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends σvm
+await page.check("#penalChk");
+await page.click("#runBtn");
+await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
+const proStats = await page.textContent("#stats");
+log("PRO-PENAL STATS:", proStats);
+if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode = 1; }
+await page.click("#stressBtn");
+const sStats = await page.textContent("#stats");
+log("PRO-STRESS STATS:", sStats);
+if (!/σvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+await page.uncheck("#penalChk");
 await page.screenshot({ path: "shots/page.png" });
 await browser.close();
 fs.writeFileSync("shots/verify-log.txt", logLines.join("\n") + "\n");
