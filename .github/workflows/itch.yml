@@ -13,6 +13,6 @@ jobs:
           curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
           unzip -o butler.zip -d butler && chmod +x butler/butler
           mkdir -p web && cp index.html web/
-          ./butler/butler push web doishy-doish/topo-toy:html5
+          ./butler/butler push web doishy-doish/toposys:html5
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
