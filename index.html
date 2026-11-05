@@ -73,10 +73,12 @@
     <label>filter <select id="filtSel"><option value="0">sensitivity</option><option value="1">density</option></select></label>
     <label>projection β <select id="betaSel"><option value="0">off</option><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
     <label><input type="checkbox" id="contChk"> continue β×2/10it</label>
+    <label title="penal continuation 1→3 (+0.5/10it), topopt-port"><input type="checkbox" id="penalChk"> penal 1→3</label>
     <label><input type="checkbox" id="crispChk"> crisp</label>
     <label>threshold <input type="range" id="threshRg" min="0.05" max="0.95" step="0.05" value="0.5" style="width:90px"><span id="threshV">0.50</span></label>
     <canvas id="histCv" width="220" height="44" title="compliance history"></canvas>
     <button id="csvBtn" disabled>history CSV</button>
+    <button id="stressBtn" disabled title="per-element von Mises σvm (topopt-port)">stress σvm</button>
   </div>
   <div id="view3D" hidden>
     <span style="color:#8b96a5">3D view:</span>
@@ -104,7 +106,7 @@
   <div id="legend"><div id="legTitle">Topology<br>Density</div><div id="legMax">1.00</div><canvas id="legCv" width="28" height="256"></canvas><div id="legMin">0.00</div></div>
 </div><!-- /wb -->
 <div id="statusbar"><span id="sbMesh">mesh: —</span><span id="sbSolver">solver: —</span><span id="sbMem">mem: —</span></div>
-<p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update; pro opts (rodin-port): density filter + Heaviside projection/continuation, crisp threshold export. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
+<p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update; pro opts (rodin-port C++ + topopt-port Python/MIT): density filter + Heaviside projection/continuation, penal 1→3 continuation, von Mises stress, crisp threshold export. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
 
 <script src="vendor/sim-wasm.js"></script>
 <script src="vendor/memtrash.js"></script>
@@ -129,11 +131,20 @@ const KE = (function () {
   for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) ke[4 + i][j] += s * NU * B12[j][i];
   return ke;
 })();
+// EB = E(NU) @ B(1) after zfergus/topopt von_mises_stress.py (MIT, (c) 2019 Zachary Ferguson):
+// unit-quad center B rows + plane-stress E; per-element stress = EB * ue, scaled by penalized density.
+const EB = (function () {
+  const B = [[0.5,0,-0.5,0,-0.5,0,0.5,0],[0,0.5,0,0.5,0,-0.5,0,-0.5],[0.5,0.5,0.5,-0.5,-0.5,-0.5,-0.5,0.5]];
+  const inv = 1 / (1 - NU * NU), q = (1 - NU) / 2, E = [[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]];
+  for (let j = 0; j < 8; j++) { E[0][j] = (B[0][j] + NU * B[1][j]) * inv; E[1][j] = (NU * B[0][j] + B[1][j]) * inv; E[2][j] = q * B[2][j] * inv; }
+  return E;
+})();
 
 const Sim = {
   nelx: 120, nely: 20, volfrac: 0.5, penal: 3.0, rmin: 2.4,
   Emin: 1e-9, E0: 1.0,
   projBeta: 0, projEta: 0.5, filterMode: 0, // pro opts (rodin-port); defaults = legacy path
+  penalCont: false, penalCur: 3.0, penalSteps: 0, // higher-language port (zfergus/topopt MIT): penal continuation 1->3, opt-in
   xphys: null, xt: null,
   x: null, edof: null, rows: null, cols: null, rowPtr: null, diagIdx: null,
   fixed: null, free: null, F: null, H: null, Hs: null, loadNode: 0,
@@ -269,7 +280,7 @@ const Sim = {
     for (let e = 0; e < edof.length; e++) {
       // legacy fast path: xphys[e] === x[e] exactly when projection is off
       const px = (this.projBeta <= 0 && this.filterMode === 0) ? this.x[e] : this.xphys[e];
-      const s = this.Emin + Math.pow(px, this.penal) * (this.E0 - this.Emin);
+      const s = this.Emin + Math.pow(px, this.penalNow()) * (this.E0 - this.Emin);
       const base = e * 64;
       for (let k = 0; k < 64; k++) vals[scatP[base + k]] += s * KEF[scatK[base + k]];
     }
@@ -322,15 +333,36 @@ const Sim = {
       for (let a = 0; a < 8; a++) ue[a] = u[ed[a]];
       let e_ = 0;
       for (let a = 0; a < 8; a++) { let s = 0; for (let b = 0; b < 8; b++) s += KE[a][b] * ue[b]; e_ += ue[a] * s; }
-      const xs = Math.pow(this.xphys[e], this.penal) * (this.E0 - this.Emin);
+      const xs = Math.pow(this.xphys[e], this.penalNow()) * (this.E0 - this.Emin);
       c += xs * e_;
       const phys = this.filterMode === 1 ? this.xt[e] : x[e];
-      dc[e] = -this.penal * Math.pow(this.xphys[e], this.penal - 1) * (this.E0 - this.Emin) * e_ * this.dheav(phys);
+      dc[e] = -this.penalNow() * Math.pow(this.xphys[e], this.penalNow() - 1) * (this.E0 - this.Emin) * e_ * this.dheav(phys);
     }
     return { c, dc };
   },
 
+  penalNow() { return this.penalCont ? this.penalCur : 3.0; }, // legacy path: exactly 3.0
+
+  stress() { // per-element von Mises (topopt-port, display-only: never feeds the OC update)
+    this.assemble();
+    const { u } = this.solve();
+    const nel = this.x.length, out = new Float64Array(nel);
+    let mx = 0, sum = 0;
+    for (let e = 0; e < nel; e++) {
+      const ed = this.edof[e];
+      let s0 = 0, s1 = 0, s2 = 0;
+      for (let b = 0; b < 8; b++) { const v = u[ed[b]]; s0 += EB[0][b] * v; s1 += EB[1][b] * v; s2 += EB[2][b] * v; }
+      const rho = this.Emin + Math.pow(this.xphys[e], this.penalNow()) * (this.E0 - this.Emin);
+      s0 *= rho; s1 *= rho; s2 *= rho;
+      const vm = Math.sqrt(Math.max(0, s0 * s0 - s0 * s1 + s1 * s1 + 3 * s2 * s2));
+      out[e] = vm; sum += vm; if (vm > mx) mx = vm;
+    }
+    return { vals: out, max: mx, mean: sum / nel };
+  },
+
   step() {
+    if (this.penalCont) this.penalCur = Math.min(3, 1 + 0.5 * Math.floor(this.penalSteps / 10));
+    this.penalSteps++;
     this.assemble();
     const { u } = this.solve();
     const { c, dc } = this.compliance(u);
@@ -398,6 +430,14 @@ const WasmCore = {
       catch (e) { A.setProj = null; }
       try { A.setFilt = WasmCore.mod["_topo2d_set_filter"] ? c("topo2d_set_filter", null, ["number"]) : null; }
       catch (e) { A.setFilt = null; }
+      try { A.setPenal = WasmCore.mod["_topo2d_set_penal_cont"] ? c("topo2d_set_penal_cont", null, ["number"]) : null; }
+      catch (e) { A.setPenal = null; }
+      try { A.getPenal = WasmCore.mod["_topo2d_get_penal"] ? c("topo2d_get_penal", "number", []) : null; }
+      catch (e) { A.getPenal = null; }
+      try { A.computeStress = WasmCore.mod["_topo2d_compute_stress"] ? c("topo2d_compute_stress", null, []) : null; }
+      catch (e) { A.computeStress = null; }
+      try { A.stressPtr = WasmCore.mod["_topo2d_stress"] ? c("topo2d_stress", "number", []) : null; }
+      catch (e) { A.stressPtr = null; }
       A.b3 = c("topo3d_build", "number", []);
       A.nel3 = c("topo3d_nel", "number", []);
       A.x3 = c("topo3d_x", "number", []);
@@ -413,6 +453,7 @@ const WasmCore = {
   },
   tipCg() { const H = this.mod.HEAPF64; return { tip: H[this.mem / 8], cg: H[this.mem / 8 + 1] }; },
   view2(n) { const p = this.api.x2() / 8; return this.mod.HEAPF64.subarray(p, p + n); },
+  viewS(n) { const p = this.api.stressPtr() / 8; return this.mod.HEAPF64.subarray(p, p + n); },
   view3(n) { const p = this.api.x3() / 8; return this.mod.HEAPF64.subarray(p, p + n); }
 };
 window.__wasmStatus = "pending";
@@ -462,7 +503,7 @@ async function runWasm2D(presetIdx) {
   view3D.hidden = true;
   window.__memtrash.track("solve-x2", { size: nel * 8, tag: "solve-mirror", site: "runWasm2D", permanent: true });
   const prev = new Float64Array(Sim.x);
-  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
+  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true; stressBtn.disabled = true;
   draw();
   const stepSome = () => {
     if (!running) return;
@@ -476,7 +517,7 @@ async function runWasm2D(presetIdx) {
       for (let e = 0; e < nel; e++) { const d = Math.abs(Sim.x[e] - prev[e]); if (d > ch) ch = d; }
       prev.set(Sim.x);
       statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm   mem:" + window.__memtrash.live() + proLabel();
-      if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
+      if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; }
     }
     draw();
     if (running) requestAnimationFrame(stepSome);
@@ -605,7 +646,7 @@ function frame() {
     proTick();
     histPush(c);
     statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + proLabel();
-    if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; }
+    if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; }
   }
   draw();
   if (running) requestAnimationFrame(frame);
@@ -634,7 +675,7 @@ runBtn.onclick = () => {
   for (const e of Sim.holes) Sim.x[e] = 0.001;
   applyPro();
   histReset();
-  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true;
+  iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true; stressBtn.disabled = true;
   draw();
   requestAnimationFrame(frame);
 };
@@ -679,21 +720,27 @@ function download(name, text, type) {
 svgBtn.onclick = () => download("topo.svg", contourSVG(), "image/svg+xml");
 
 /* ---------- pro opts (rodin-port): density filter + Heaviside projection/continuation, crisp export, history ---------- */
-window.__hist = []; window.__betaCur = 0; window.__betaMax = 0; window.__thresh = 0.5; window.__crisp = false;
+window.__hist = []; window.__betaCur = 0; window.__betaMax = 0; window.__penalCont = false; window.__thresh = 0.5; window.__crisp = false;
 const filtSel = document.getElementById("filtSel"), betaSel = document.getElementById("betaSel"),
   contChk = document.getElementById("contChk"), crispChk = document.getElementById("crispChk"),
   threshRg = document.getElementById("threshRg"), threshV = document.getElementById("threshV"),
-  histCv = document.getElementById("histCv"), csvBtn = document.getElementById("csvBtn");
+  histCv = document.getElementById("histCv"), csvBtn = document.getElementById("csvBtn"),
+  penalChk = document.getElementById("penalChk"), stressBtn = document.getElementById("stressBtn");
 function proLabel() {
   const f = +filtSel.value, b = window.__betaCur;
-  return (f === 1 ? " pro:filt=density" : "") + (b > 0 ? " pro:β=" + b : "");
+  return (f === 1 ? " pro:filt=density" : "") + (b > 0 ? " pro:β=" + b : "") + (window.__penalCont ? " pro:penal=cont" : "");
 }
 function applyPro() {
-  const f = +filtSel.value, b0 = +betaSel.value;
+  const f = +filtSel.value, b0 = +betaSel.value, pc = penalChk.checked;
   window.__betaMax = (contChk.checked && b0 > 0) ? b0 : 0;
   window.__betaCur = b0;
-  if (WasmCore.ready && WasmCore.api.setProj) { WasmCore.api.setProj(b0, 0.5); WasmCore.api.setFilt(f); }
+  window.__penalCont = pc;
+  if (WasmCore.ready && WasmCore.api.setProj) {
+    WasmCore.api.setProj(b0, 0.5); WasmCore.api.setFilt(f);
+    if (WasmCore.api.setPenal) WasmCore.api.setPenal(pc ? 1 : 0);
+  }
   Sim.projBeta = b0; Sim.projEta = 0.5; Sim.filterMode = f;
+  Sim.penalCont = pc; Sim.penalSteps = 0; Sim.penalCur = 3.0;
 }
 function applyProBeta() {
   const f = +filtSel.value, b = window.__betaCur;
@@ -730,6 +777,24 @@ csvBtn.onclick = () => {
   let s = "iter,compliance\n";
   window.__hist.forEach((c, i) => s += (i + 1) + "," + c.toFixed(4) + "\n");
   download("topo-history.csv", s, "text/csv");
+};
+stressBtn.onclick = () => { // per-element von Mises σvm (topopt-port): wasm core if present, else JS mirror
+  const nel = Sim.x.length;
+  let vals, max, mean;
+  if (WasmCore.ready && WasmCore.api.computeStress) {
+    WasmCore.api.computeStress();
+    vals = Array.from(WasmCore.viewS(nel));
+    max = -Infinity; let sum = 0;
+    for (const v of vals) { sum += v; if (v > max) max = v; }
+    mean = sum / nel;
+  } else {
+    const r = Sim.stress();
+    vals = Array.from(r.vals); max = r.max; mean = r.mean;
+  }
+  statsEl.textContent += "   σvm max " + max.toFixed(3) + " mean " + mean.toFixed(4);
+  let s = "el,stress\n";
+  vals.forEach((v, i) => s += i + "," + v.toFixed(6) + "\n");
+  download("topo-stress.csv", s, "text/csv");
 };
 
 /* ---------- Stage 1: paint your own problem ---------- */
