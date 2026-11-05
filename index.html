@@ -914,6 +914,7 @@ stressBtn.onclick = () => { // per-element von Mises σvm (topopt-port): wasm co
   let s = "el,stress\n";
   vals.forEach((v, i) => s += i + "," + v.toFixed(6) + "\n");
   download("topo-stress.csv", s, "text/csv");
+  draw(); // show the stress field that was just computed
 };
 
 /* ---------- Ansys-style system layer: results, details, menus, messages, probe ---------- */
