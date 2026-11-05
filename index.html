@@ -743,7 +743,7 @@ function draw() {
   const f = renderField(rf.vals, nelx, nely, rf.raw ? null : { min: rf.min, max: rf.max });
   wbSet("legTitle", rf.title);
   wbSet("legUnit", rf.unit);
-  wbSet("otResult", rf.title + " · max " + fmtV(r.max));
+  wbSet("otResult", rf.title + " · max " + fmtV(f.max));
   syncPanels(f, {
     geo: (presetEl.value || "cantilever") + " · " + nelx + "×" + nely + " · Q4 plane stress",
     nodes: (nelx + 1) * (nely + 1), els: nelx * nely,
