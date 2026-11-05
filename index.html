@@ -5,58 +5,126 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>topo-toy — brackets grown in your browser</title>
 <style>
-  body { background:#0b0e13; color:#d7dee8; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:16px; text-align:center; }
-  p.sub { color:#8b96a5; font-size:12px; margin:12px 0 0; }
-  #topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; max-width:1180px; margin:0 auto 10px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:10px 16px; }
-  #logo { font-size:17px; letter-spacing:1px; color:#fff; }
-  #logo strong { color:#4d9fff; }
-  #topmeta { font-size:12px; color:#8b96a5; display:flex; gap:14px; }
-  #engineBadge { color:#9fe8b4; }
-  #wb { display:flex; gap:12px; justify-content:center; align-items:stretch; max-width:1180px; margin:0 auto; text-align:left; }
-  #tree { width:190px; flex:0 0 190px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 14px; font-size:12px; }
-  .thead { font-size:13px; color:#fff; border-bottom:1px solid #26303c; padding-bottom:6px; margin-bottom:4px; letter-spacing:1px; }
-  .tsec { color:#4d9fff; margin:10px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:1px; }
-  .trow { color:#d7dee8; line-height:1.5; }
-  #viewport { flex:1 1 480px; min-width:0; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 16px; }
-  #cv { width:100%; height:auto; max-width:720px; display:block; margin:8px auto; background:#060a12; border:1px solid #26303c; border-radius:6px; }
-  #legend { width:78px; flex:0 0 78px; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:12px 8px; font-size:11px; text-align:center; color:#8b96a5; display:flex; flex-direction:column; align-items:center; gap:6px; }
-  #legTitle { color:#d7dee8; }
-  #legCv { width:28px; height:256px; border:1px solid #26303c; border-radius:3px; }
-  #statusbar { max-width:1180px; margin:10px auto 0; background:#11161d; border:1px solid #26303c; border-radius:10px; padding:8px 16px; font-size:12px; color:#8b96a5; display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
-  #statusbar b { color:#d7dee8; font-weight:normal; }
-  #bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:2px 0 6px; font-size:13px; }
-  #view3D, #toolBar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:0 0 6px; font-size:13px; }
+  body { background:#d3d8de; color:#1c1c1c; font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif; margin:0; padding:0 10px 14px; text-align:center; }
+  p.sub { color:#5a6570; font-size:11px; margin:10px 0 0; }
+  /* title bar (Ansys-application blue) */
+  #titlebar { display:flex; justify-content:space-between; align-items:center; gap:12px; background:linear-gradient(#0070c0,#005a9e); color:#fff; border-radius:0 0 6px 6px; padding:8px 16px; margin-bottom:8px; }
+  #logo { font-size:16px; letter-spacing:.5px; }
+  #logo strong { font-weight:700; }
+  #logo .sys { opacity:.85; font-size:12px; margin-left:10px; }
+  #topmeta { font-size:12px; display:flex; gap:14px; font-family:ui-monospace,Consolas,monospace; }
+  #engineBadge { color:#c9f0d4; }
+  #memBadge { color:#e8eef4; }
+  /* menu bar */
+  #menubar { display:flex; gap:2px; align-items:center; background:#f4f6f8; border:1px solid #aeb6bf; border-radius:6px 6px 0 0; border-bottom:none; padding:0 8px; font-size:13px; text-align:left; }
+  .menu { position:relative; }
+  .menu > button { background:none; border:none; padding:7px 12px; font:inherit; cursor:pointer; color:#1c1c1b; border-radius:0; }
+  .menu > button:hover, .menu.open > button { background:#d9e6f2; }
+  .menu .drop { display:none; position:absolute; left:0; top:100%; background:#fff; border:1px solid #aeb6bf; box-shadow:2px 3px 8px rgba(0,0,0,.25); min-width:220px; z-index:50; }
+  .menu.open .drop { display:block; }
+  .menu .drop button { display:block; width:100%; text-align:left; background:none; border:none; padding:8px 14px; font:inherit; cursor:pointer; white-space:nowrap; }
+  .menu .drop button:hover { background:#d9e6f2; }
+  .menu .drop hr { border:none; border-top:1px solid #d3d8de; margin:4px 0; }
+  /* ribbon toolbar */
+  #ribbon { display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#eef1f4; border:1px solid #aeb6bf; border-bottom:none; padding:8px 12px; font-size:13px; text-align:left; }
+  #ribbon .grp { display:flex; gap:8px; align-items:center; background:#fff; border:1px solid #c6cdd4; border-radius:4px; padding:5px 10px; }
+  #ribbon .glab { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#005a9e; font-weight:600; }
+  button.primary { background:#0070c0; border-color:#005a9e; color:#fff; font-weight:600; }
+  button.primary:hover:not(:disabled) { background:#005a9e; }
+  /* layout */
+  #wb { display:flex; gap:8px; justify-content:center; align-items:stretch; text-align:left; background:#eef1f4; border:1px solid #aeb6bf; border-top:none; padding:8px; }
+  .panel { background:#fff; border:1px solid #aeb6bf; border-radius:4px; }
+  #leftcol { width:295px; flex:0 0 295px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+  #tree { padding:0 0 8px; font-size:12px; overflow:auto; }
+  .thead { font-size:12px; color:#003e6b; font-weight:600; background:#dde7f0; border-bottom:1px solid #aeb6bf; padding:6px 10px; border-radius:4px 4px 0 0; }
+  .tnode { padding:3px 8px 3px 12px; cursor:pointer; line-height:1.55; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tnode.lvl1 { padding-left:22px; } .tnode.lvl2 { padding-left:34px; }
+  .tnode:hover { background:#e8f1fa; } .tnode.sel { background:#cfe5f7; outline:1px solid #0070c0; }
+  .tnode .st { display:inline-block; width:18px; font-weight:700; }
+  .st.ok { color:#1e8e3e; } .st.run { color:#e8710a; } .st.idle { color:#9aa0a6; } .st.bad { color:#c5221f; }
+  .tnode .tsub { color:#5a6570; font-size:11px; display:block; padding-left:18px; white-space:normal; }
+  #details { font-size:12px; }
+  #details table { width:100%; border-collapse:collapse; }
+  #details td { border-bottom:1px solid #e3e7eb; padding:4px 10px; vertical-align:top; }
+  #details td.k { color:#005a9e; width:42%; }
+  #details td.v { font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+  #viewport { flex:1 1 480px; min-width:0; padding:8px 12px; display:flex; flex-direction:column; }
+  #bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 6px; font-size:13px; }
+  #view3D, #toolBar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 6px; font-size:13px; }
   #view3D[hidden], #toolBar[hidden] { display:none; }
-  button, select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
-  button:hover { background:#242f42; }
+  #cvwrap { display:flex; gap:8px; align-items:stretch; justify-content:center; }
+  #cv { background:#f7f9fb; border:1px solid #aeb6bf; }
+  #legend { width:86px; flex:0 0 86px; background:#fff; border:1px solid #aeb6bf; padding:8px 6px; font-size:11px; text-align:center; color:#1c1c1c; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  #legTitle { font-weight:600; font-size:11px; }
+  #legUnit { color:#5a6570; font-size:10px; }
+  #legMax, #legMin { font-family:ui-monospace,Consolas,monospace; }
+  #legCv { width:26px; height:256px; border:1px solid #7a838c; }
+  #msgpane { margin-top:8px; font-size:11px; }
+  #msgList { height:86px; overflow-y:auto; text-align:left; font-family:ui-monospace,Consolas,monospace; padding:6px 10px; color:#333; }
+  #msgList .ok { color:#1e8e3e; } #msgList .warn { color:#b06000; } #msgList .err { color:#c5221f; }
+  #statusbar { display:flex; gap:18px; justify-content:center; flex-wrap:wrap; background:#eef1f4; border:1px solid #aeb6bf; border-top:none; border-radius:0 0 6px 6px; padding:7px 16px; font-size:12px; color:#333; }
+  #statusbar b { color:#003e6b; font-weight:600; }
+  #probeEl { font-family:ui-monospace,Consolas,monospace; color:#005a9e; }
+  button, select, input[type=text] { background:#fff; color:#1c1c1c; border:1px solid #7a838c; border-radius:3px; padding:6px 10px; font:inherit; cursor:pointer; }
+  button:hover:not(:disabled) { background:#e8f1fa; border-color:#0070c0; }
   button:disabled { opacity:.45; cursor:default; }
-  #stats { font-size:13px; color:#9fe8b4; min-height:20px; margin-top:8px; white-space:pre-wrap; text-align:center; }
-  #verify { font-size:12px; color:#8b96a5; margin-top:6px; white-space:pre-wrap; text-align:center; }
-  #proBar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin:6px 0 2px; font-size:12px; color:#8b96a5; }
+  input[type=range] { accent-color:#0070c0; }
+  input[type=checkbox] { accent-color:#0070c0; }
+  #stats { font-size:12px; color:#0b6e2f; min-height:18px; margin-top:6px; white-space:pre-wrap; text-align:center; font-family:ui-monospace,Consolas,monospace; }
+  #verify { font-size:11px; color:#5a6570; margin-top:4px; white-space:pre-wrap; text-align:center; }
+  #proBar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:6px 0 2px; font-size:12px; color:#333; }
   #proBar label { display:flex; gap:6px; align-items:center; white-space:nowrap; }
-  #proBar select { background:#1b2330; color:#d7dee8; border:1px solid #334052; border-radius:6px; padding:5px 8px; font:inherit; }
-  #histCv { border:1px solid #26303c; border-radius:6px; background:#060a12; }
-  a { color:#7db8ff; }
+  #proBar select { padding:4px 6px; }
+  #histCv { border:1px solid #aeb6bf; background:#f7f9fb; }
+  #resBar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:6px 0 0; font-size:12px; color:#333; }
+  a { color:#005a9e; }
+  #aboutOv { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:99; }
+  #aboutOv[hidden] { display:none; }
+  #aboutBox { background:#fff; border:1px solid #7a838c; border-radius:6px; max-width:560px; padding:20px 24px; text-align:left; font-size:13px; box-shadow:0 8px 30px rgba(0,0,0,.4); }
   @media (max-width:900px) {
     #wb { flex-wrap:wrap; }
-    #tree { flex:1 1 100%; width:auto; }
-    #legend { flex:1 1 100%; width:auto; flex-direction:row; justify-content:center; }
-    #legCv { width:120px; height:14px; }
+    #leftcol { flex:1 1 100%; width:auto; }
   }
 </style>
 </head>
 <body>
-<div id="topbar"><span id="logo">topo<strong>workbench</strong></span><span id="topmeta"><span id="engineBadge">engine:…</span><span id="memBadge"></span></span></div>
+<div id="titlebar"><span id="logo">topo<strong>Workbench</strong><span class="sys">Static Structural · SIMP topology optimization</span></span><span id="topmeta"><span id="engineBadge">engine:…</span><span id="memBadge"></span></span></div>
+<div id="menubar">
+  <div class="menu"><button>File</button><div class="drop">
+    <button id="mSvg">Export contour SVG…</button><button id="mPng">Export image PNG…</button><button id="mHist">Export compliance history CSV…</button><button id="mStress">Export stress CSV…</button><hr><button id="mStl">Export printable STL (3D)…</button><button id="mMsh">Export mesh .msh…</button><button id="mVtk">Export field .vtk…</button>
+  </div></div>
+  <div class="menu"><button>View</button><div class="drop">
+    <button id="mOutline">Toggle Outline panel</button><button id="mDetails">Toggle Details panel</button><button id="mMsg">Toggle Messages panel</button>
+  </div></div>
+  <div class="menu"><button>Units</button><div class="drop">
+    <button id="mUnitC">Consistent unitless (E = 1, F = 1) ✓</button><button id="mUnitM">Metric (mm · N · MPa)</button>
+  </div></div>
+  <div class="menu"><button>Tools</button><div class="drop">
+    <button id="mPaint">Paint-your-own domain…</button><button id="mStlIn">Import STL silhouette…</button><button id="mClear">Clear paint</button>
+  </div></div>
+  <div class="menu"><button>Help</button><div class="drop"><button id="mAbout">About this workbench…</button></div></div>
+</div>
 <div id="wb">
-  <div id="tree"><div class="thead">Outline</div>
-    <div class="tsec">Geometry</div><div class="trow" id="otGeo">—</div>
-    <div class="tsec">Mesh</div><div class="trow" id="otMesh">—</div>
-    <div class="tsec">Setup</div><div class="trow" id="otSetup">—</div>
-    <div class="tsec">Solution</div><div class="trow" id="otStatus">Ready — press "grow it"</div>
-    <div class="tsec">Results</div><div class="trow" id="otResult">Topology Density</div>
+  <div id="leftcol">
+  <div id="tree" class="panel"><div class="thead">Outline</div>
+    <div class="tnode" data-sel="system"><span class="st idle" id="stSys">?</span> <b>A: Static Structural</b></div>
+    <div class="tnode lvl1" data-sel="geometry"><span class="st idle" id="stGeo">?</span> Geometry<span class="tsub" id="otGeo">—</span></div>
+    <div class="tnode lvl1" data-sel="coords"><span class="st ok">✓</span> Coordinate System<span class="tsub">Global, Cartesian</span></div>
+    <div class="tnode lvl1" data-sel="mesh"><span class="st idle" id="stMesh">?</span> Mesh<span class="tsub" id="otMesh">—</span></div>
+    <div class="tnode lvl1" data-sel="analysis"><span class="st idle" id="stSetup">?</span> Analysis Settings<span class="tsub" id="otSetup">—</span></div>
+    <div class="tnode lvl1" data-sel="fixed"><span class="st ok">✓</span> Fixed Support</div>
+    <div class="tnode lvl1" data-sel="force"><span class="st ok">✓</span> Force (unit, −Y)</div>
+    <div class="tnode lvl1" data-sel="solinfo"><span class="st idle" id="stSol">?</span> Solution Information<span class="tsub" id="otStatus">Ready — press Solve</span></div>
+    <div class="tnode lvl1" data-sel="resDensity"><span class="st idle" id="stResD">?</span> Topology Density</div>
+    <div class="tnode lvl1" data-sel="resDeform"><span class="st idle" id="stResU">?</span> Total Deformation</div>
+    <div class="tnode lvl1" data-sel="resStress"><span class="st idle" id="stResS">?</span> Equivalent Stress (von-Mises)</div>
+    <div class="tnode lvl1" data-sel="result"><span class="st idle"> </span> <span class="tsub" id="otResult">Topology Density</span></div>
   </div>
-  <div id="viewport">
-  <div id="bar">
+  <div id="details" class="panel"><div class="thead" id="detTitle">Details of "Static Structural"</div><table id="detRows"><tr><td class="k">System</td><td class="v">Static Structural (SIMP)</td></tr><tr><td class="k">Status</td><td class="v">Ready — press Solve</td></tr></table></div>
+  </div><!-- /leftcol -->
+  <div id="viewport" class="panel">
+  <div id="ribbon">
+    <div class="grp"><span class="glab">System</span>
     <select id="preset">
       <option value="cantilever">cantilever (Euler-Bernoulli check)</option>
       <option value="bridge">bridge (both ends pinned, center load)</option>
@@ -64,10 +132,25 @@
       <option value="lbracket">L-bracket 60x60 (fixed top, tip load)</option>
       <option value="cantilever3d">cantilever 3D 40×12×6 (beam-theory check)</option>
     </select>
-    <button id="runBtn">grow it</button>
+    <button id="runBtn" class="primary">⚡ Solve</button>
+    </div>
+    <div class="grp"><span class="glab">Results</span>
+    <select id="resultSel" title="active result — like inserting Total Deformation / Equivalent Stress">
+      <option value="density">Topology Density</option>
+      <option value="deform">Total Deformation</option>
+      <option value="stress">Equivalent Stress (von-Mises)</option>
+    </select>
+    <select id="unitSel" title="unit system (display)">
+      <option value="consistent">Consistent (E=1, F=1)</option>
+      <option value="metric">Metric (mm · N · MPa)</option>
+    </select>
+    </div>
+    <div class="grp"><span class="glab">Domain</span>
     <button id="modeBtn">paint your own</button>
-    <button id="svgBtn" disabled>download SVG</button>
-    <button id="pngBtn" disabled>download PNG</button>
+    </div>
+    <div class="grp"><span class="glab">Export</span>
+    <button id="svgBtn" disabled>SVG</button>
+    <button id="pngBtn" disabled>PNG</button>
   </div>
   <div id="proBar">
     <label>filter <select id="filtSel"><option value="0">sensitivity</option><option value="1">density</option></select></label>
@@ -81,13 +164,13 @@
     <button id="stressBtn" disabled title="per-element von Mises σvm (topopt-port)">stress σvm</button>
   </div>
   <div id="view3D" hidden>
-    <span style="color:#8b96a5">3D view:</span>
+    <span>3D view:</span>
     <button id="projBtn">max projection</button>
     <button id="sliceBtn">slice</button>
     <label>z <input type="range" id="sliceZ" min="0" max="5" value="3" style="width:120px"></label>
     <button id="stlBtn" disabled>download printable STL</button>
   </div>
-  <div id="toolBar" hidden>    <span style="color:#8b96a5">paint on the grid, then grow it:</span>
+  <div id="toolBar" hidden>    <span>paint on the grid, then Solve:</span>
     <button data-tool="wall" style="border-color:#4d9fff">wall (fixed)</button>
     <button data-tool="load" style="border-color:#ff5d5d">load (hangs weight)</button>
     <button data-tool="hole" style="border-color:#8b96a5">hole (stays empty)</button>
@@ -99,14 +182,22 @@
     <button id="mshBtn">export .msh</button>
     <button id="vtkBtn">export .vtk</button>
   </div>
-  <canvas id="cv"></canvas>
-  <div id="stats">press "grow it"</div>
+  <div id="cvwrap"><canvas id="cv"></canvas>
+  <div id="legend"><div id="legTitle">Topology Density</div><div id="legUnit"></div><div id="legMax">1.00</div><canvas id="legCv" width="26" height="256"></canvas><div id="legMin">0.00</div></div></div>
+  <div id="stats">press Solve</div>
   <div id="verify"></div>
+  <div id="msgpane" class="panel"><div class="thead">Messages</div><div id="msgList"></div></div>
   </div><!-- /viewport -->
-  <div id="legend"><div id="legTitle">Topology<br>Density</div><div id="legMax">1.00</div><canvas id="legCv" width="28" height="256"></canvas><div id="legMin">0.00</div></div>
 </div><!-- /wb -->
-<div id="statusbar"><span id="sbMesh">mesh: —</span><span id="sbSolver">solver: —</span><span id="sbMem">mem: —</span></div>
+<div id="statusbar"><span id="sbMesh">mesh: —</span><span id="sbSolver">solver: —</span><span id="sbMem">mem: —</span><span id="probeEl">probe: —</span></div>
 <p class="sub">method: Sigmund SIMP, Q4 plane stress, CG solve, sensitivity filter + OC update; pro opts (rodin-port C++ + topopt-port Python/MIT): density filter + Heaviside projection/continuation, penal 1→3 continuation, von Mises stress, crisp threshold export. source: <a href="https://github.com/doishy-doish/topo-toy">github.com/doishy-doish/topo-toy</a></p>
+
+<div id="aboutOv" hidden><div id="aboutBox">
+<b>topoWorkbench — Static Structural (SIMP)</b><br><br>
+Quadrilateral plane-stress topology optimization in your browser: CG solver, sensitivity filter + OC update, zero dependencies. Pro result controls port ideas from rodin (C++, Heaviside projection + density filter) and zfergus/topopt (Python/MIT: penal continuation + von Mises stress).<br><br>
+Units are consistent and unitless (E = 1, F = 1); switch to Metric for mm/N/MPa display labels.<br><br>
+<button id="aboutClose">Close</button>
+</div></div>
 
 <script src="vendor/sim-wasm.js"></script>
 <script src="vendor/memtrash.js"></script>
@@ -360,6 +451,20 @@ const Sim = {
     return { vals: out, max: mx, mean: sum / nel };
   },
 
+  deformation() { // per-element mean nodal |u| (Total Deformation result, display-only)
+    this.assemble();
+    const { u } = this.solve();
+    const nel = this.x.length, out = new Float64Array(nel);
+    let mx = 0, sum = 0;
+    for (let e = 0; e < nel; e++) {
+      const ed = this.edof[e];
+      let s = 0;
+      for (let a = 0; a < 8; a += 2) { const dx = u[ed[a]], dy = u[ed[a + 1]]; s += Math.sqrt(dx * dx + dy * dy); }
+      const m = s / 4; out[e] = m; sum += m; if (m > mx) mx = m;
+    }
+    return { vals: out, max: mx, mean: sum / nel };
+  },
+
   step() {
     if (this.penalCont) this.penalCur = Math.min(3, 1 + 0.5 * Math.floor(this.penalSteps / 10));
     this.penalSteps++;
@@ -500,6 +605,8 @@ async function runWasm2D(presetIdx) {
   applyPro();
   Sim.x.set(WasmCore.view2(nel));
   histReset();
+  setSolveState("solving");
+  msgLog("solve started — " + name + " (engine:wasm)", null);
   view3D.hidden = true;
   window.__memtrash.track("solve-x2", { size: nel * 8, tag: "solve-mirror", site: "runWasm2D", permanent: true });
   const prev = new Float64Array(Sim.x);
@@ -512,12 +619,13 @@ async function runWasm2D(presetIdx) {
       iters++;
       proTick();
       histPush(c);
+      if (iters % 10 === 0) msgLog("compliance " + c.toFixed(2), null);
       Sim.x.set(WasmCore.view2(nel));
       let ch = 0;
       for (let e = 0; e < nel; e++) { const d = Math.abs(Sim.x[e] - prev[e]); if (d > ch) ch = d; }
       prev.set(Sim.x);
       statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + "   engine:wasm   mem:" + window.__memtrash.live() + proLabel();
-      if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; }
+      if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; setSolveState("solved"); msgLog("solve finished — iter " + iters + " (engine:wasm)", "ok"); }
     }
     draw();
     if (running) requestAnimationFrame(stepSome);
@@ -536,7 +644,7 @@ async function runWasm3D() {
   A.reset3();
   Sim3.x.set(WasmCore.view3(nel));
   histReset();
-  running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
+  running3 = true; runBtn.disabled = true; stlBtn.disabled = true; setSolveState("solving"); msgLog("3D solve started", null);
   view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
   for (let it = 1; it <= 15; it++) {
     await new Promise(r => setTimeout(r, 10));
@@ -547,7 +655,7 @@ async function runWasm3D() {
     histPush(c);
     draw3();
   }
-  running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
+  running3 = false; runBtn.disabled = false; stlBtn.disabled = false; setSolveState("solved"); msgLog("3D solve finished", "ok");
 }
 
 // ---------- UI ----------
@@ -572,18 +680,20 @@ function cmap(v) { // jet-style: void deep-blue -> solid red (Ansys result look)
 const wbOC = document.createElement("canvas");
 const wbOctx = wbOC.getContext("2d");
 let wbOW = 0, wbOH = 0;
-function renderField(field, nelx, nely) {
-  // returns {min, max}; draws smooth interpolated contours + faint mesh edges
+function renderField(field, nelx, nely, norm) {
+  // norm {min,max}: map raw values into the colormap (for stress/deformation);
+  // null = raw 0..1 density. Returns raw {min, max}; draws smooth contours + faint mesh.
   if (wbOW !== nelx || wbOH !== nely) { wbOC.width = nelx; wbOC.height = nely; wbOW = nelx; wbOH = nely; }
   const img = wbOctx.createImageData(nelx, nely);
   const d = img.data;
   let mn = Infinity, mx = -Infinity;
   const crisp = !!window.__crisp, th = (window.__thresh == null ? 0.5 : window.__thresh);
   for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
-    let v = field[ex * nely + ey];
-    if (crisp) v = v >= th ? 1 : 0;
-    if (v < mn) mn = v; if (v > mx) mx = v;
-    const [r, g, b] = cmap(v);
+    const raw = field[ex * nely + ey];
+    let v = raw;
+    if (crisp && !norm) v = v >= th ? 1 : 0;
+    if (raw < mn) mn = raw; if (raw > mx) mx = raw;
+    const [r, g, b] = cmap(norm ? (v - norm.min) / ((norm.max - norm.min) || 1) : v);
     const o = ((nely - 1 - ey) * nelx + ex) * 4;
     d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
   }
@@ -592,7 +702,7 @@ function renderField(field, nelx, nely) {
   cv.width = nelx * px; cv.height = nely * px;
   ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = "high";
   ctx2d.drawImage(wbOC, 0, 0, cv.width, cv.height);
-  ctx2d.strokeStyle = "rgba(6,10,18,0.28)"; ctx2d.lineWidth = 1; // faint element edges
+  ctx2d.strokeStyle = "rgba(20,40,60,0.22)"; ctx2d.lineWidth = 1; // faint element edges
   ctx2d.beginPath();
   for (let ix = 0; ix <= nelx; ix++) { ctx2d.moveTo(ix * px + 0.5, 0); ctx2d.lineTo(ix * px + 0.5, cv.height); }
   for (let iy = 0; iy <= nely; iy++) { ctx2d.moveTo(0, iy * px + 0.5); ctx2d.lineTo(cv.width, iy * px + 0.5); }
@@ -609,8 +719,8 @@ function syncPanels(field, info) {
   const st = (typeof running !== "undefined" && running) || (typeof running3 !== "undefined" && running3)
     ? "Solving… (iter " + (typeof iters !== "undefined" ? iters : "?") + ")" : "Solved";
   wbSet("otStatus", st);
-  wbSet("legMin", field.min.toFixed(2));
-  wbSet("legMax", field.max.toFixed(2));
+  wbSet("legMin", fmtV(field.min));
+  wbSet("legMax", fmtV(field.max));
   wbSet("sbMesh", "mesh: " + info.nodes + " nodes · " + info.els + " els · " + info.free + " free DOF");
   wbSet("sbSolver", "solver: CG · " + (window.__wasmStatus || "?"));
   wbSet("sbMem", "mem: " + (window.__memtrash ? window.__memtrash.live() : "?") + " areas");
@@ -622,13 +732,17 @@ function syncPanels(field, info) {
   for (let y = 0; y < 256; y++) {
     const [r, g, b] = cmap(1 - y / 255);
     lc.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
-    lc.fillRect(0, y, 28, 1);
+    lc.fillRect(0, y, 26, 1);
   }
 })();
 
 function draw() {
-  const { nelx, nely, x } = Sim;
-  const f = renderField(x, nelx, nely);
+  const { nelx, nely } = Sim;
+  const rf = getResultField(window.__result || "density");
+  const f = renderField(rf.vals, nelx, nely, rf.raw ? null : { min: rf.min, max: rf.max });
+  wbSet("legTitle", rf.title);
+  wbSet("legUnit", rf.unit);
+  wbSet("otResult", rf.title + " · max " + fmtV(r.max));
   syncPanels(f, {
     geo: (presetEl.value || "cantilever") + " · " + nelx + "×" + nely + " · Q4 plane stress",
     nodes: (nelx + 1) * (nely + 1), els: nelx * nely,
@@ -645,8 +759,9 @@ function frame() {
     iters++;
     proTick();
     histPush(c);
+    if (iters % 10 === 0) msgLog("compliance " + c.toFixed(2), null);
     statsEl.textContent = "iter " + iters + "   compliance " + c.toFixed(2) + proLabel();
-    if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; }
+    if (ch < 0.01 || iters >= 80) { running = false; runBtn.disabled = false; svgBtn.disabled = false; pngBtn.disabled = false; stressBtn.disabled = false; setSolveState("solved"); msgLog("solve finished — iter " + iters, "ok"); }
   }
   draw();
   if (running) requestAnimationFrame(frame);
@@ -676,6 +791,8 @@ runBtn.onclick = () => {
   applyPro();
   histReset();
   iters = 0; running = true; runBtn.disabled = true; svgBtn.disabled = true; pngBtn.disabled = true; stressBtn.disabled = true;
+  setSolveState("solving");
+  msgLog("solve started — " + presetEl.value + " " + Sim.nelx + "×" + Sim.nely + ", 50% vol", null);
   draw();
   requestAnimationFrame(frame);
 };
@@ -779,6 +896,7 @@ csvBtn.onclick = () => {
   download("topo-history.csv", s, "text/csv");
 };
 stressBtn.onclick = () => { // per-element von Mises σvm (topopt-port): wasm core if present, else JS mirror
+  window.__result = "stress"; document.getElementById("resultSel").value = "stress"; markResNode();
   const nel = Sim.x.length;
   let vals, max, mean;
   if (WasmCore.ready && WasmCore.api.computeStress) {
@@ -796,6 +914,158 @@ stressBtn.onclick = () => { // per-element von Mises σvm (topopt-port): wasm co
   vals.forEach((v, i) => s += i + "," + v.toFixed(6) + "\n");
   download("topo-stress.csv", s, "text/csv");
 };
+
+/* ---------- Ansys-style system layer: results, details, menus, messages, probe ---------- */
+function fmtV(v) {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 10000 || a < 0.001)) return v.toExponential(1);
+  return String(+v.toFixed(a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3));
+}
+window.__result = "density"; window.__units = "consistent"; window.__resCache = {}; window.__sel = "system";
+function resultUnit(mode) {
+  const m = window.__units === "metric";
+  return mode === "deform" ? (m ? "mm" : "length") : mode === "stress" ? (m ? "MPa" : "force/length²") : "–";
+}
+function getResultField(mode) { // cached per (mode, iter, mesh): stress/deform solve on demand, display-only
+  mode = mode || window.__result || "density";
+  const key = mode + "@" + iters + ":" + (Sim.x ? Sim.x.length : 0) + ":" + window.__units;
+  const c = window.__resCache[mode];
+  if (c && c.key === key) return c.f;
+  let f;
+  if (!Sim.edof || !Sim.x) f = { vals: new Float64Array(1), min: 0, max: 1, title: "Topology Density", unit: "–", raw: true, short: "ρ" };
+  else if (mode === "stress") { const r = Sim.stress(); f = { vals: r.vals, min: 0, max: r.max, title: "Equivalent Stress (von-Mises)", unit: resultUnit("stress"), short: "σvm" }; }
+  else if (mode === "deform") { const r = Sim.deformation(); f = { vals: r.vals, min: 0, max: r.max, title: "Total Deformation", unit: resultUnit("deform"), short: "|u|" }; }
+  else f = { vals: Sim.x, min: 0, max: 1, title: "Topology Density", unit: "–", raw: true, short: "ρ" };
+  window.__resCache[mode] = { key, f };
+  return f;
+}
+function msgLog(t, cls) {
+  const box = document.getElementById("msgList");
+  if (!box) return;
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.textContent = "[iter " + iters + "] " + t;
+  box.appendChild(d);
+  while (box.children.length > 80) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+function setSolveState(s) {
+  const all = ["stSys", "stGeo", "stMesh", "stSetup", "stSol", "stResD", "stResU", "stResS"];
+  const set = (id, cls, ch) => { const el = document.getElementById(id); if (el) { el.className = "st " + cls; el.textContent = ch; } };
+  if (s === "solving") { all.forEach(id => set(id, "idle", "·")); set("stSol", "run", "⚡"); }
+  else if (s === "solved") { all.forEach(id => set(id, "ok", "✓")); }
+  else all.forEach(id => set(id, "idle", "?"));
+  renderDetails();
+}
+function detailsFor(sel) {
+  const has = !!(Sim.edof && Sim.x);
+  const pen = Sim.penalNow ? Sim.penalNow() : 3;
+  const filt = (+filtSel.value === 1) ? "density" : "sensitivity";
+  const beta = window.__betaCur || 0;
+  const lastC = window.__hist.length ? (+window.__hist[window.__hist.length - 1]).toFixed(2) : "—";
+  const R = (rows) => rows;
+  switch (sel) {
+    case "geometry": return { title: "Geometry", rows: R([["Preset", presetEl.value || "—"], ["Size", has ? Sim.nelx + " × " + Sim.nely + " elements" : "—"], ["Physics", "Q4 plane stress, unit thickness"], ["Domain", paintMode ? "painted custom" : "full rectangle"]]) };
+    case "coords": return { title: "Coordinate System", rows: R([["Type", "Cartesian"], ["Location", "Global"], ["Axes", "X right · Y up"]]) };
+    case "mesh": return { title: "Mesh", rows: R([["Nodes", has ? String((Sim.nelx + 1) * (Sim.nely + 1)) : "—"], ["Elements", has ? String(Sim.nelx * Sim.nely) : "—"], ["Element type", "QUAD4, linear"], ["Edge length", "1.0"]]) };
+    case "analysis": return { title: "Analysis Settings", rows: R([["Volume fraction", "0.50"], ["Penalty p", has ? String(+pen.toFixed(2)) : "—"], ["Filter", filt + " (r = " + (has ? Sim.rmin : "—") + ")"], ["Projection β", String(beta)], ["β continuation", window.__betaMax > 0 ? "×2 / 10 it to " + window.__betaMax : "off"], ["p continuation", window.__penalCont ? "1 → 3" : "off"]]) };
+    case "fixed": return { title: "Fixed Support", rows: R([["Type", "fixed, all DOF"], ["Scoped nodes", has && Sim.fixed ? Sim.fixed.size + " nodes" : "—"]]) };
+    case "force": return { title: "Force", rows: R([["Magnitude", "1.0 (unit)"], ["Direction", "−Y"], ["Scoped node", has ? String(Sim.loadNode) : "—"]]) };
+    case "solinfo": return { title: "Solution Information", rows: R([["Solver", "CG, Jacobi, tol 1e-6"], ["Iterations", String(iters)], ["Last compliance", lastC], ["Engine", window.__wasmStatus || "?"]]) };
+    case "resDensity": case "resDeform": case "resStress": {
+      const mode = sel === "resDeform" ? "deform" : sel === "resStress" ? "stress" : "density";
+      if (!has || running) return { title: "Result", rows: R([["Status", running ? "solving…" : "no result — press Solve"]]) };
+      const f = getResultField(mode), vv = f.vals;
+      let mn = Infinity, sum = 0;
+      for (let i = 0; i < vv.length; i++) { const x = vv[i]; if (x < mn) mn = x; sum += x; }
+      return { title: f.title, rows: R([["Minimum", fmtV(mn) + " " + f.unit], ["Maximum", fmtV(f.max) + " " + f.unit], ["Average", fmtV(sum / vv.length) + " " + f.unit], ["Display", "normalized colormap"]]) };
+    }
+    default: return { title: "Static Structural", rows: R([["System", "Static Structural (SIMP)"], ["Solver", "CG on free DOF"], ["Engine", window.__wasmStatus || "?"], ["Status", running ? "Solving…" : (window.__hist.length ? "Solved" : "Ready — press Solve")], ["Unit system", window.__units === "metric" ? "Metric (mm · N · MPa)" : "Consistent (E = 1, F = 1)"]]) };
+  }
+}
+function renderDetails() {
+  const d = detailsFor(window.__sel || "system");
+  const t = document.getElementById("detTitle"), tb = document.getElementById("detRows");
+  if (t) t.textContent = 'Details of "' + d.title + '"';
+  if (tb) tb.innerHTML = d.rows.map(r => "<tr><td class=\"k\">" + r[0] + "</td><td class=\"v\">" + r[1] + "</td></tr>").join("");
+}
+function markResNode() {
+  document.querySelectorAll("#tree .tnode").forEach(n => n.classList.remove("sel"));
+  const map = { density: "resDensity", deform: "resDeform", stress: "resStress" };
+  const want = map[window.__result || "density"];
+  document.querySelectorAll('#tree .tnode[data-sel="' + want + '"]').forEach(n => n.classList.add("sel"));
+  window.__sel = want; renderDetails();
+}
+const resultSel = document.getElementById("resultSel"), unitSel = document.getElementById("unitSel"), probeEl = document.getElementById("probeEl");
+document.querySelectorAll("#tree .tnode").forEach(n => n.addEventListener("click", () => {
+  document.querySelectorAll("#tree .tnode").forEach(x => x.classList.remove("sel"));
+  n.classList.add("sel");
+  window.__sel = n.getAttribute("data-sel");
+  const m = { resDensity: "density", resDeform: "deform", resStress: "stress" };
+  if (m[window.__sel] && Sim.edof) { window.__result = m[window.__sel]; resultSel.value = window.__result; draw(); }
+  renderDetails();
+}));
+resultSel.onchange = () => { window.__result = resultSel.value; markResNode(); draw(); };
+function setUnit(u) {
+  window.__units = u; unitSel.value = u;
+  const a = document.getElementById("mUnitC"), b = document.getElementById("mUnitM");
+  if (a) a.textContent = "Consistent unitless (E = 1, F = 1)" + (u === "consistent" ? " ✓" : "");
+  if (b) b.textContent = "Metric (mm · N · MPa)" + (u === "metric" ? " ✓" : "");
+  draw(); renderDetails();
+}
+unitSel.onchange = () => setUnit(unitSel.value);
+// menus
+document.querySelectorAll(".menu > button").forEach(b => b.addEventListener("click", (e) => {
+  const m = b.parentElement, was = m.classList.contains("open");
+  document.querySelectorAll(".menu.open").forEach(x => x.classList.remove("open"));
+  if (!was) m.classList.add("open");
+  if (e && e.stopPropagation) e.stopPropagation();
+}));
+document.addEventListener("click", () => document.querySelectorAll(".menu.open").forEach(x => x.classList.remove("open")));
+const menuCall = (btn, label) => () => {
+  document.querySelectorAll(".menu.open").forEach(x => x.classList.remove("open"));
+  try {
+    if (btn.disabled) { msgLog(label + ": nothing to export yet — Solve first", "warn"); return; }
+    btn.onclick();
+  } catch (err) { msgLog(label + " failed: " + String((err && err.message) || err).slice(0, 120), "err"); }
+};
+const mSvg = document.getElementById("mSvg"), mPng = document.getElementById("mPng"),
+  mHist = document.getElementById("mHist"), mStress = document.getElementById("mStress"),
+  mStl = document.getElementById("mStl"), mMsh = document.getElementById("mMsh"), mVtk = document.getElementById("mVtk");
+mSvg.onclick = menuCall(svgBtn, "SVG"); mPng.onclick = menuCall(pngBtn, "PNG");
+mHist.onclick = menuCall(csvBtn, "history"); mStress.onclick = menuCall(stressBtn, "stress");
+const menuCallId = (id, label) => () => {
+  document.querySelectorAll(".menu.open").forEach(x => x.classList.remove("open"));
+  try {
+    const btn = document.getElementById(id);
+    if (btn.disabled) { msgLog(label + ": nothing to export yet — Solve first", "warn"); return; }
+    btn.onclick();
+  } catch (err) { msgLog(label + " failed: " + String((err && err.message) || err).slice(0, 120), "err"); }
+};
+mStl.onclick = menuCallId("stlBtn", "STL"); mMsh.onclick = menuCallId("mshBtn", "mesh"); mVtk.onclick = menuCallId("vtkBtn", "VTK");
+document.getElementById("mOutline").onclick = () => { const p = document.getElementById("tree"); p.hidden = !p.hidden; };
+document.getElementById("mDetails").onclick = () => { const p = document.getElementById("details"); p.hidden = !p.hidden; };
+document.getElementById("mMsg").onclick = () => { const p = document.getElementById("msgpane"); p.hidden = !p.hidden; };
+document.getElementById("mUnitC").onclick = () => setUnit("consistent");
+document.getElementById("mUnitM").onclick = () => setUnit("metric");
+document.getElementById("mPaint").onclick = () => document.getElementById("modeBtn").onclick();
+document.getElementById("mStlIn").onclick = () => document.getElementById("stlFile").click();
+document.getElementById("mClear").onclick = () => document.getElementById("clearBtn").onclick();
+document.getElementById("mAbout").onclick = () => { document.getElementById("aboutOv").hidden = false; };
+document.getElementById("aboutClose").onclick = () => { document.getElementById("aboutOv").hidden = true; };
+// probe readout (Ansys-style: element value under the cursor)
+cv.addEventListener("mousemove", (ev) => {
+  if (!Sim.edof || !Sim.x || paintMode) { if (!paintMode && probeEl) probeEl.textContent = "probe: —"; return; }
+  const r = cv.getBoundingClientRect();
+  const ex = Math.max(0, Math.min(Sim.nelx - 1, Math.floor((ev.clientX - r.left) / r.width * Sim.nelx)));
+  const ey = Math.max(0, Math.min(Sim.nely - 1, Sim.nely - 1 - Math.floor((ev.clientY - r.top) / r.height * Sim.nely)));
+  const f = getResultField(window.__result || "density");
+  probeEl.textContent = "probe: el (" + ex + "," + ey + ") " + (f.short || "") + " = " + fmtV(f.vals[ex * Sim.nely + ey]);
+});
+cv.addEventListener("mouseleave", () => { if (probeEl) probeEl.textContent = "probe: —"; });
+setSolveState("ready");
+msgLog("workbench ready — pick an analysis system and press Solve", "ok");
 
 /* ---------- Stage 1: paint your own problem ---------- */
 let paintMode = false, tool = "wall";
@@ -1266,7 +1536,7 @@ async function run3D() {
     " → " + (v.err * 100).toFixed(1) + "% off (CG " + v.cgIters + " iters). Growing…";
   Sim3.x.fill(Sim3.volfrac);
   histReset();
-  running3 = true; runBtn.disabled = true; stlBtn.disabled = true;
+  running3 = true; runBtn.disabled = true; stlBtn.disabled = true; setSolveState("solving"); msgLog("3D solve started", null);
   view3D.hidden = false; paintMode = false; toolBar.hidden = true; modeBtn.textContent = "paint your own";
   if (!Sim3.edof) return;
   for (let it = 1; it <= 15; it++) {
@@ -1278,7 +1548,7 @@ async function run3D() {
     draw3();
     if (ch < 0.015 && it >= 5) break;
   }
-  running3 = false; runBtn.disabled = false; stlBtn.disabled = false;
+  running3 = false; runBtn.disabled = false; stlBtn.disabled = false; setSolveState("solved"); msgLog("3D solve finished", "ok");
 }
 pngBtn.onclick = () => {
   const a = document.createElement("a");
