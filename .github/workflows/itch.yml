@@ -2,7 +2,7 @@ name: itch
 on:
   push:
     branches: [main]
-    paths: [index.html, .github/workflows/itch.yml]
+    paths: [index.html, vendor/**, .github/workflows/itch.yml]
   workflow_dispatch:
 jobs:
   push:
@@ -20,7 +20,7 @@ jobs:
           ls -la butler/linux-amd64/
       - name: stage web dir
         run: |
-          mkdir -p web && cp index.html web/ && ls -la web/
+          mkdir -p web && cp index.html web/ && cp -r vendor web/ && ls -la web/ web/vendor/
       - name: push to itch
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
