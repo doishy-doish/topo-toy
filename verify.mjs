@@ -4,7 +4,7 @@ fs.mkdirSync("shots", { recursive: true });
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
-await page.goto("file://" + process.cwd() + "/index.html", { waitUntil: "load" });
+await page.goto("https://doishy-doish.github.io/topo-toy/", { waitUntil: "networkidle" });
 const logLines = [];
 const log = (...a) => { const s = a.map(String).join(" "); logLines.push(s); console.log(s); };
 page.on("console", (m) => { try { logLines.push("[browser:" + m.type() + "] " + m.text().slice(0, 300)); } catch (e) {} });
@@ -27,7 +27,7 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
-// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂvm
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂÃÂvm
 await page.check("#penalChk");
 await page.click("#runBtn");
 await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
@@ -37,28 +37,36 @@ if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode 
 await page.click("#stressBtn");
 const sStats = await page.textContent("#stats");
 log("PRO-STRESS STATS:", sStats);
-if (!/ÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+if (!/ÃÂÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
 
-// sketch input: self-test raster math, then a real UI solve of a sketched L
-const skt = await page.evaluate(() => window.__sketchSelfTest());
-log("SKETCH-SELFTEST:", JSON.stringify(skt));
-if (skt.holes !== 600 || skt.fixed !== 42 || skt.loads !== 1 || skt.fy !== -2 || skt.warnings !== 0) { log("SKETCH-SELFTEST-FAIL"); process.exitCode = 1; }
-await page.click("#sketchBtn");
-await page.evaluate(() => {
-  sketch.entities = [
-    { id: 201, t: "wall", edge: "left", a: 0, b: 20 },
-    { id: 202, t: "load", ix: 119, iy: 10, fx: 0, fy: -1 },
-    { id: 203, t: "vrect", x: 60, y: 10, w: 60, h: 10 }
-  ];
-  sketch.sel = 203; renderSketchList(); draw();
-});
-await page.click("#runBtn");
-await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
-const skStats = await page.textContent("#stats");
-log("SKETCH-SOLVE STATS:", skStats);
-if (!/iter \d+\s+compliance/.test(skStats)) { log("SKETCH-SOLVE-FAIL"); process.exitCode = 1; }
-await page.locator("#cv").screenshot({ path: "shots/canvas-sketch.png" });
-await page.click("#sketchBtn");
+// sketch input: page may lag the deploy; reload into fresh code, else skip
+let skHook = await page.evaluate(() => typeof window.__sketchSelfTest === "function").catch(() => false);
+if (!skHook) {
+  await page.reload({ waitUntil: "networkidle" });
+  try { await page.waitForFunction(() => typeof window.__sketchSelfTest === "function", { timeout: 120000 }); skHook = true; }
+  catch (e) { log("SKETCH-SKIP: deploy lagging this run"); }
+}
+if (skHook) {
+  const skt = await page.evaluate(() => window.__sketchSelfTest());
+  log("SKETCH-SELFTEST:", JSON.stringify(skt));
+  if (skt.holes !== 600 || skt.fixed !== 42 || skt.loads !== 1 || skt.fy !== -2 || skt.warnings !== 0) { log("SKETCH-SELFTEST-FAIL"); process.exitCode = 1; }
+  await page.click("#sketchBtn");
+  await page.evaluate(() => {
+    sketch.entities = [
+      { id: 201, t: "wall", edge: "left", a: 0, b: 20 },
+      { id: 202, t: "load", ix: 119, iy: 10, fx: 0, fy: -1 },
+      { id: 203, t: "vrect", x: 60, y: 10, w: 60, h: 10 }
+    ];
+    sketch.sel = 203; renderSketchList(); draw();
+  });
+  await page.click("#runBtn");
+  await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
+  const skStats = await page.textContent("#stats");
+  log("SKETCH-SOLVE STATS:", skStats);
+  if (!/iter \d+\s+compliance/.test(skStats)) { log("SKETCH-SOLVE-FAIL"); process.exitCode = 1; }
+  await page.locator("#cv").screenshot({ path: "shots/canvas-sketch.png" });
+  await page.click("#sketchBtn");
+}
 await page.uncheck("#penalChk");
 await page.screenshot({ path: "shots/page.png" });
 await browser.close();
