@@ -27,7 +27,7 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
-// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂÃÂvm
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂÃÂÃÂÃÂvm
 await page.check("#penalChk");
 await page.click("#runBtn");
 await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
@@ -37,14 +37,17 @@ if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode 
 await page.click("#stressBtn");
 const sStats = await page.textContent("#stats");
 log("PRO-STRESS STATS:", sStats);
-if (!/ÃÂÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+if (!/ÃÂÃÂÃÂÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
 
 // sketch input: page may lag the deploy; reload into fresh code, else skip
 let skHook = await page.evaluate(() => typeof window.__sketchSelfTest === "function").catch(() => false);
 if (!skHook) {
   await page.reload({ waitUntil: "networkidle" });
-  try { await page.waitForFunction(() => typeof window.__sketchSelfTest === "function", { timeout: 120000 }); skHook = true; }
-  catch (e) { log("SKETCH-SKIP: deploy lagging this run"); }
+  let hasBtn = false;
+  try { await page.waitForSelector("#sketchBtn", { timeout: 120000 }); hasBtn = true; } catch (e) {}
+  skHook = hasBtn ? await page.evaluate(() => typeof window.__sketchSelfTest === "function").catch(() => false) : false;
+  if (hasBtn && !skHook) { log("SKETCH-HOOK-FAIL: sketch UI present but self-test missing"); process.exitCode = 1; }
+  else if (!hasBtn) log("SKETCH-SKIP: deploy lagging this run");
 }
 if (skHook) {
   const skt = await page.evaluate(() => window.__sketchSelfTest());
