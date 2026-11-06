@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: clone Go-Hybrid fresh main (no sha pin: upstream rebases; patch anchors assert)
+      - name: clone Go-Hybrid fresh main - unpinned, patch anchors assert
         run: |
           git clone --depth 50 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
           cd /tmp/gohybrid && git log --oneline -1 && git log -1 --format=%H
@@ -47,4 +47,3 @@ jobs:
           cargo test -p hy-check --test zz_time_time_surface -- --nocapture 2>&1 | tail -15
           cargo test -p hy-emit --test zz_time_time_emit -- --nocapture 2>&1 | tail -12
 
-# retrigger 23:55Z
