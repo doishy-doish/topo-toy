@@ -4,7 +4,7 @@ fs.mkdirSync("shots", { recursive: true });
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
-await page.goto("https://doishy-doish.github.io/topo-toy/", { waitUntil: "networkidle" });
+await page.goto("file://" + process.cwd() + "/index.html", { waitUntil: "load" });
 const logLines = [];
 const log = (...a) => { const s = a.map(String).join(" "); logLines.push(s); console.log(s); };
 page.on("console", (m) => { try { logLines.push("[browser:" + m.type() + "] " + m.text().slice(0, 300)); } catch (e) {} });
@@ -27,7 +27,7 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
-// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends Ïvm
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂvm
 await page.check("#penalChk");
 await page.click("#runBtn");
 await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
@@ -37,7 +37,7 @@ if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode 
 await page.click("#stressBtn");
 const sStats = await page.textContent("#stats");
 log("PRO-STRESS STATS:", sStats);
-if (!/Ïvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+if (!/ÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
 
 // sketch input: self-test raster math, then a real UI solve of a sketched L
 const skt = await page.evaluate(() => window.__sketchSelfTest());
