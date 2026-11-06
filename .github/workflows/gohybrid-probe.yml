@@ -32,3 +32,5 @@ jobs:
           }
           RS
           cargo test -p hy-check --test zz_time_time_probe -- --nocapture
+      - name: show probe verdict
+        run: cat /tmp/probe_verdict.txt; echo "### probe verdict" >> $GITHUB_STEP_SUMMARY; cat /tmp/probe_verdict.txt >> $GITHUB_STEP_SUMMARY
