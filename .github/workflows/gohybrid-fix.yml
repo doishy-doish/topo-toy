@@ -10,10 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: clone Go-Hybrid at pinned sha
+      - name: clone Go-Hybrid fresh main (no sha pin: upstream rebases; patch anchors assert)
         run: |
-          git clone https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-          cd /tmp/gohybrid && git checkout 10d28c5da71759b553997d0998d64963996200 && git log --oneline -1
+          git clone --depth 50 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
+          cd /tmp/gohybrid && git log --oneline -1 && git log -1 --format=%H
       - name: fetch fix files
         run: |
           mkdir -p /tmp/fix
