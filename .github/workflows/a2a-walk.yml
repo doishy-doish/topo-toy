@@ -13,22 +13,24 @@ jobs:
       - name: walk mission
         env:
           KEY: ${{ secrets.A2AWIRE_API_KEY }}
-          MID: ${{ inputs.mission_id }}
+          MID_IN: ${{ inputs.mission_id }}
         run: |
-          set -e
-          hdr(){ echo "--header"; }
-          for i in 1 2 3 4 5 6 7 8; do
-            MS=$(curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID")
-            echo "$MS" | head -c 600; echo
-            STEP=$(echo "$MS" | python3 -c "import sys,json; j=json.load(sys.stdin); n=j.get('control',{}).get('next') or j.get('next'); print((n.get('method','GET')+'|'+(n.get('url') or n.get('path'))))")
-            M=$(echo "$STEP" | cut -d'|' -f1); U=$(echo "$STEP" | cut -d'|' -f2-)
-            echo "hop $i: $M $U"
-            if [ -z "$U" ] || [ "$U" = "None" ]; then echo DONE; break; fi
-            R=$(curl -s -i -X "$M" -H "Authorization: Bearer $KEY" -H "X-API-Key: $KEY" -H "X-A2A-Mission: $MID" "$U" | head -c 1200)
-            echo "$R"; echo "---"
-            ST=$(echo "$MS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
-            if [ "$ST" = "complete" ] || [ "$ST" = "completed" ]; then echo COMPLETE; break; fi
+          MID="${MID_IN:-3f686e32-4431-43d9-93ff-e71f443ef79a}"
+          echo "MID=$MID keylen=${#KEY}"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            echo "== iter $i =="
+            MS=$(curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID" || true)
+            echo "MS_LEN=${#MS}"
+            echo "$MS" | head -c 400; echo
+            echo "$MS" | python3 -c "import sys,json; j=json.load(sys.stdin); print('status='+str(j.get('status'))); print('step='+str(j.get('current_step_index')))" || true
+            U=$(echo "$MS" | python3 -c "import sys,json; j=json.load(sys.stdin); n=(j.get('control') or {}).get('next') or j.get('next') or {}; print((n.get('method','GET')+'|'+(n.get('url') or n.get('path') or '')))" || true)
+            echo "NEXT=$U"
+            M=$(echo "$U" | cut -d'|' -f1); P=$(echo "$U" | cut -d'|' -f2-)
+            if [ -z "$P" ] || [ "$P" = "None" ] || [ "$P" = "GET|" ]; then echo WALK_END; break; fi
+            echo "CALL $M $P"
+            curl -s -X "$M" -H "Authorization: Bearer $KEY" -H "X-API-Key: $KEY" -H "X-A2A-Mission: $MID" "$P" -o /tmp/hop.json -w "HTTP %{http_code}\n" || true
+            head -c 800 /tmp/hop.json; echo
             sleep 3
           done
-          echo "final:"
-          curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID" | head -c 2000
+          echo "== final =="
+          curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID" | head -c 1500; echo
