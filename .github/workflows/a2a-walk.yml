@@ -1,0 +1,34 @@
+name: a2a-walk
+on:
+  workflow_dispatch:
+    inputs:
+      mission_id:
+        description: mission id
+        default: 3f686e32-4431-43d9-93ff-e71f443ef79a
+        required: false
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: walk mission
+        env:
+          KEY: ${{ secrets.A2AWIRE_API_KEY }}
+          MID: ${{ inputs.mission_id }}
+        run: |
+          set -e
+          hdr(){ echo "--header"; }
+          for i in 1 2 3 4 5 6 7 8; do
+            MS=$(curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID")
+            echo "$MS" | head -c 600; echo
+            STEP=$(echo "$MS" | python3 -c "import sys,json; j=json.load(sys.stdin); n=j.get('control',{}).get('next') or j.get('next'); print((n.get('method','GET')+'|'+(n.get('url') or n.get('path'))))")
+            M=$(echo "$STEP" | cut -d'|' -f1); U=$(echo "$STEP" | cut -d'|' -f2-)
+            echo "hop $i: $M $U"
+            if [ -z "$U" ] || [ "$U" = "None" ]; then echo DONE; break; fi
+            R=$(curl -s -i -X "$M" -H "Authorization: Bearer $KEY" -H "X-API-Key: $KEY" -H "X-A2A-Mission: $MID" "$U" | head -c 1200)
+            echo "$R"; echo "---"
+            ST=$(echo "$MS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+            if [ "$ST" = "complete" ] || [ "$ST" = "completed" ]; then echo COMPLETE; break; fi
+            sleep 3
+          done
+          echo "final:"
+          curl -s -H "Authorization: Bearer $KEY" "https://a2awire.com/api/v1/missions/$MID" | head -c 2000
