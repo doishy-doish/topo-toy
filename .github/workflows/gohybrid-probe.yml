@@ -25,8 +25,10 @@ jobs:
               let src = "struct stats {\n    t time.time\n    n int\n}\nfn main() {\n    var s stats\n    s.t.totally_fake()\n    fmt.println(\"n={s.n}\")\n}\n";
               let ast = hy_syntax::parse_file("probe.hy", src).expect("parse");
               let r = check_file(&ast);
-              eprintln!("PROBE verdict={:?} diags={:?}", r.verdict, r.diagnostics.iter().map(|d| (d.code.clone(), d.message.clone())).collect::<Vec<_>>());
-              // Record only: fail-open predicts ACCEPT with 0 diags. Do not assert yet.
+              eprintln!("PROBE verdict={:?} ndiags={} codes={:?}", r.verdict, r.diagnostics.len(), r.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>());
+              std::fs::write("/tmp/probe_verdict.txt", format!("verdict={:?} ndiags={} codes={:?} msgs={:?}", r.verdict, r.diagnostics.len(), r.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>(), r.diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>())).ok();
+              // Fail-open prediction: phantom on unmodelled time.time ACCEPTS today. Assert it so a future fix flips this red.
+              assert_eq!(format!("{:?}", r.verdict), "Accept", "probe: expected fail-open ACCEPT, got {:?}", r.diagnostics);
           }
           RS
           cargo test -p hy-check --test zz_time_time_probe -- --nocapture
