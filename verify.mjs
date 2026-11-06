@@ -27,7 +27,7 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
-// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends σvm
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends Ïvm
 await page.check("#penalChk");
 await page.click("#runBtn");
 await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
@@ -37,7 +37,28 @@ if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode 
 await page.click("#stressBtn");
 const sStats = await page.textContent("#stats");
 log("PRO-STRESS STATS:", sStats);
-if (!/σvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+if (!/Ïvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+
+// sketch input: self-test raster math, then a real UI solve of a sketched L
+const skt = await page.evaluate(() => window.__sketchSelfTest());
+log("SKETCH-SELFTEST:", JSON.stringify(skt));
+if (skt.holes !== 600 || skt.fixed !== 42 || skt.loads !== 1 || skt.fy !== -2 || skt.warnings !== 0) { log("SKETCH-SELFTEST-FAIL"); process.exitCode = 1; }
+await page.click("#sketchBtn");
+await page.evaluate(() => {
+  sketch.entities = [
+    { id: 201, t: "wall", edge: "left", a: 0, b: 20 },
+    { id: 202, t: "load", ix: 119, iy: 10, fx: 0, fy: -1 },
+    { id: 203, t: "vrect", x: 60, y: 10, w: 60, h: 10 }
+  ];
+  sketch.sel = 203; renderSketchList(); draw();
+});
+await page.click("#runBtn");
+await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
+const skStats = await page.textContent("#stats");
+log("SKETCH-SOLVE STATS:", skStats);
+if (!/iter \d+\s+compliance/.test(skStats)) { log("SKETCH-SOLVE-FAIL"); process.exitCode = 1; }
+await page.locator("#cv").screenshot({ path: "shots/canvas-sketch.png" });
+await page.click("#sketchBtn");
 await page.uncheck("#penalChk");
 await page.screenshot({ path: "shots/page.png" });
 await browser.close();
