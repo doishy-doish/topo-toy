@@ -52,7 +52,15 @@
   /* viewport: dark CAE graphics (light UI chrome, dark viz — like Mechanical) */
   #viewport { flex:1 1 480px; min-width:0; padding:8px 12px; display:flex; flex-direction:column; background:linear-gradient(#2b313a,#20252d); border-color:#14171c; color:#dfe4ea; }
   #bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 6px; font-size:13px; color:#cfd8e3; }
-  #view3D, #toolBar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 6px; font-size:13px; color:#cfd8e3; }
+  #view3D, #toolBar, #sketchBar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 6px; font-size:13px; color:#cfd8e3; }
+  #view3D[hidden], #toolBar[hidden], #sketchBar[hidden] { display:none; }
+  #skList { display:flex; gap:6px; flex-wrap:wrap; align-items:stretch; max-width:100%; }
+  .skrow { display:flex; gap:5px; align-items:center; background:rgba(10,14,20,.55); border:1px solid #3a4350; border-radius:4px; padding:4px 7px; font-size:11px; font-family:ui-monospace,Consolas,monospace; color:#cfd8e3; }
+  .skrow.sel { border-color:#0070c0; box-shadow:0 0 0 1px #0070c0; }
+  .skrow .tic { color:#e8a33d; font-style:normal; }
+  .skrow input { width:52px; background:#0d1117; color:#dfe4ea; border:1px solid #3a4350; border-radius:3px; padding:2px 4px; font:inherit; font-size:11px; }
+  .skrow button { background:none; border:none; color:#8b95a5; cursor:pointer; font-size:12px; padding:0 2px; }
+  .skrow button:hover { color:#ff5d5d; }
   #view3D[hidden], #toolBar[hidden] { display:none; }
   #cvwrap { display:flex; gap:8px; align-items:flex-start; justify-content:center; position:relative; background:#10131a; border:1px solid #0a0c10; border-radius:4px; padding:34px 14px 40px 44px; overflow:auto; min-height:340px;
     background-image:linear-gradient(rgba(120,140,160,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(120,140,160,.07) 1px,transparent 1px); background-size:24px 24px; }
@@ -116,7 +124,7 @@
     <button id="mUnitC">Consistent unitless (E = 1, F = 1) ✓</button><button id="mUnitM">Metric (mm · N · MPa)</button>
   </div></div>
   <div class="menu"><button>Tools</button><div class="drop">
-    <button id="mPaint">Paint-your-own domain…</button><button id="mStlIn">Import STL silhouette…</button><button id="mClear">Clear paint</button>
+    <button id="mPaint">Paint-your-own domain…</button><button id="mSketch">Sketch with dimensions…</button><button id="mStlIn">Import STL silhouette…</button><button id="mClear">Clear paint</button>
   </div></div>
   <div class="menu"><button>Help</button><div class="drop"><button id="mAbout">About this workbench…</button></div></div>
 </div>
@@ -172,6 +180,7 @@
     </div>
     <div class="grp"><span class="glab">✎ Domain</span>
     <button id="modeBtn">paint your own</button>
+    <button id="sketchBtn">sketch with dims</button>
     </div>
     <div class="grp"><span class="glab">⎙ Export</span>
     <button id="svgBtn" disabled>SVG</button>
@@ -202,6 +211,21 @@
     </label>
     <button id="mshBtn">export .msh</button>
     <button id="vtkBtn">export .vtk</button>
+  </div>
+  <div id="sketchBar" hidden>
+    <span>sketch the domain with dimensions, then Solve:</span>
+    <label>grid <select id="skGrid">
+      <option value="120x20">120 × 20</option>
+      <option value="160x32">160 × 32</option>
+      <option value="200x40">200 × 40</option>
+      <option value="60x60">60 × 60</option>
+    </select></label>
+    <button data-sktool="vrect" style="border-color:#e8a33d">void rect (drag)</button>
+    <button data-sktool="vcirc" style="border-color:#e8a33d">void circle (drag)</button>
+    <button data-sktool="wall" style="border-color:#4d9fff">wall (click edge, drag span)</button>
+    <button data-sktool="load" style="border-color:#ff5d5d">load (click node)</button>
+    <button id="skClear">clear</button>
+    <div id="skList" title="entities with real dimensions — type the numbers"></div>
   </div>
   <div id="cvwrap"><div id="rulerX"></div><div id="rulerY"></div>
   <span id="gfxTitle" class="gfx">—</span>
@@ -779,6 +803,7 @@ function draw() {
     fixedN: Sim.fixed ? Sim.fixed.size : 0, loadsN: 1
   });
   drawPaint();
+  drawSketch();
 }
 
 function frame() {
@@ -805,6 +830,14 @@ runBtn.onclick = () => {
     Sim.build({ custom: true, fixed: [...paint.fixed], loads: [...paint.loads].map(n => [n, 0, -1]), holes: [...paint.holes] });
     verifyEl.textContent = "custom problem: " + paint.fixed.size + " fixed nodes, " + paint.loads.size + " loads, " +
       paint.holes.size + " forced voids. No textbook answer — the grown truss is the test.";
+  } else if (sketchMode) {
+    if (!sketch.entities.some(e => e.t === "wall") || !sketch.entities.some(e => e.t === "load")) { msgLog("sketch needs at least one wall and one load — add them, type the numbers, then Solve", "err"); return; }
+    const c = compileSketch();
+    Sim.nelx = c.nelx; Sim.nely = c.nely; Sim.rmin = c.rmin;
+    Sim.build({ custom: true, fixed: c.fixed, loads: c.loads, holes: c.holes });
+    for (const w of c.warnings) msgLog("sketch: " + w, "warn");
+    verifyEl.textContent = "sketch: " + (c.fixed.length / 2) + " fixed nodes, " + c.loads.length + " loads, " +
+      c.holes.length + " voids on " + c.nelx + "×" + c.nely + ". No textbook answer — the grown truss is the test.";
   } else {
     Sim.build(presetEl.value);
     const v = Sim.verify();
@@ -996,7 +1029,7 @@ function detailsFor(sel) {
   const lastC = window.__hist.length ? (+window.__hist[window.__hist.length - 1]).toFixed(2) : "—";
   const R = (rows) => rows;
   switch (sel) {
-    case "geometry": return { title: "Geometry", rows: R([["Preset", presetEl.value || "—"], ["Size", has ? Sim.nelx + " × " + Sim.nely + " elements" : "—"], ["Physics", "Q4 plane stress, unit thickness"], ["Domain", paintMode ? "painted custom" : "full rectangle"]]) };
+    case "geometry": return { title: "Geometry", rows: R([["Preset", presetEl.value || "—"], ["Size", has ? Sim.nelx + " × " + Sim.nely + " elements" : "—"], ["Physics", "Q4 plane stress, unit thickness"], ["Domain", paintMode ? "painted custom" : sketchMode ? "sketch (" + sketch.entities.length + " entities)" : "full rectangle"]]) };
     case "coords": return { title: "Coordinate System", rows: R([["Type", "Cartesian"], ["Location", "Global"], ["Axes", "X right · Y up"]]) };
     case "mesh": return { title: "Mesh", rows: R([["Nodes", has ? String((Sim.nelx + 1) * (Sim.nely + 1)) : "—"], ["Elements", has ? String(Sim.nelx * Sim.nely) : "—"], ["Element type", "QUAD4, linear"], ["Edge length", "1.0"]]) };
     case "analysis": return { title: "Analysis Settings", rows: R([["Volume fraction", "0.50"], ["Penalty p", has ? String(+pen.toFixed(2)) : "—"], ["Filter", filt + " (r = " + (has ? Sim.rmin : "—") + ")"], ["Projection β", String(beta)], ["β continuation", window.__betaMax > 0 ? "×2 / 10 it to " + window.__betaMax : "off"], ["p continuation", window.__penalCont ? "1 → 3" : "off"]]) };
@@ -1080,6 +1113,7 @@ document.getElementById("mMsg").onclick = () => { const p = document.getElementB
 document.getElementById("mUnitC").onclick = () => setUnit("consistent");
 document.getElementById("mUnitM").onclick = () => setUnit("metric");
 document.getElementById("mPaint").onclick = () => document.getElementById("modeBtn").onclick();
+document.getElementById("mSketch").onclick = () => { if (!sketchMode) sketchBtn.onclick(); };
 document.getElementById("mStlIn").onclick = () => document.getElementById("stlFile").click();
 document.getElementById("mClear").onclick = () => document.getElementById("clearBtn").onclick();
 document.getElementById("mAbout").onclick = () => { document.getElementById("aboutOv").hidden = false; };
@@ -1113,6 +1147,7 @@ const modeBtn = document.getElementById("modeBtn");
 const toolBar = document.getElementById("toolBar");
 const clearBtn = document.getElementById("clearBtn");
 modeBtn.onclick = () => {
+  if (sketchMode) skExit();
   paintMode = !paintMode;
   toolBar.hidden = !paintMode;
   modeBtn.textContent = paintMode ? "back to presets" : "paint your own";
@@ -1128,6 +1163,275 @@ toolBar.querySelectorAll("[data-tool]").forEach(b => {
   };
 });
 let painting = false;
+/* ---------- Dimensioned sketch input: CAD-grade domain definition ----------
+   Entities live in element units, y-up, origin bottom-left (physics coords,
+   like the solver). The table holds the real dimensions - type the numbers.
+   Compiles to the same custom path as paint ({fixed dofs, [node,fx,fy]
+   loads, hole elements}), so the solver core is untouched. Unlike paint
+   (node ids), walls pin BOTH dofs of the right nodes. */
+let sketchMode = false, skTool = "vrect", skDrag = null;
+const sketch = { grid: "120x20", entities: [], seq: 1, sel: 0 };
+const sketchBtn = document.getElementById("sketchBtn");
+const skBar = document.getElementById("sketchBar");
+const skList = document.getElementById("skList");
+const skGrid = document.getElementById("skGrid");
+function skDims() {
+  const [a, b] = (skGrid ? skGrid.value : sketch.grid).split("x").map(Number);
+  return { nelx: a | 0, nely: b | 0, rmin: (a === 60 && b === 60) ? 2.0 : 2.4 };
+}
+function skStage() {
+  const g = skDims();
+  Sim.nelx = g.nelx; Sim.nely = g.nely; Sim.rmin = g.rmin;
+  Sim.build({ custom: true, fixed: [], loads: [], holes: [] });
+  Sim.x.fill(Sim.volfrac);
+  window.__resCache = {};
+  draw();
+}
+function skEnter() {
+  if (paintMode) modeBtn.onclick();
+  sketchMode = true;
+  skBar.hidden = false;
+  sketchBtn.textContent = "back to presets";
+  skStage();
+  msgLog("sketch mode — " + skDims().nelx + "×" + skDims().nely + " stock. Drag voids/walls, click nodes for loads, type the numbers.", null);
+}
+function skExit() {
+  sketchMode = false;
+  skBar.hidden = true;
+  sketchBtn.textContent = "sketch with dims";
+  draw();
+}
+sketchBtn.onclick = () => { sketchMode ? skExit() : skEnter(); };
+skGrid.onchange = () => { sketch.grid = skGrid.value; if (sketchMode) { skStage(); msgLog("sketch grid → " + sketch.grid + " (entities kept, clamped at compile)", null); } };
+document.getElementById("skClear").onclick = () => { sketch.entities = []; sketch.sel = 0; renderSketchList(); draw(); };
+skBar.querySelectorAll("[data-sktool]").forEach(b => {
+  b.onclick = () => {
+    skTool = b.dataset.sktool;
+    skBar.querySelectorAll("[data-sktool]").forEach(x => x.style.background = "");
+    b.style.background = "#2a3a55";
+  };
+});
+function skAdd(en) {
+  en.id = sketch.seq++;
+  sketch.entities.push(en);
+  sketch.sel = en.id;
+  renderSketchList();
+  draw();
+  return en;
+}
+// mouse (element units, y-up) from a canvas event
+function skMouse(ev) {
+  const r = cv.getBoundingClientRect();
+  return {
+    x: (ev.clientX - r.left) / r.width * Sim.nelx,
+    y: Sim.nely - (ev.clientY - r.top) / r.height * Sim.nely
+  };
+}
+function skSnapEdge(p) {
+  const { nelx, nely } = Sim;
+  const d = [
+    { edge: "left", dist: Math.abs(p.x), proj: p.y, len: nely },
+    { edge: "right", dist: Math.abs(p.x - nelx), proj: p.y, len: nely },
+    { edge: "bottom", dist: Math.abs(p.y), proj: p.x, len: nelx },
+    { edge: "top", dist: Math.abs(p.y - nely), proj: p.x, len: nelx }
+  ].sort((a, b) => a.dist - b.dist)[0];
+  return d.dist <= 4 ? d : null;
+}
+cv.addEventListener("mousedown", (ev) => {
+  if (!sketchMode) return;
+  const p = skMouse(ev);
+  if (skTool === "load") {
+    const ix = Math.max(0, Math.min(Sim.nelx, Math.round(p.x)));
+    const iy = Math.max(0, Math.min(Sim.nely, Math.round(p.y)));
+    skAdd({ t: "load", ix, iy, fx: 0, fy: -1 });
+    return;
+  }
+  if (skTool === "wall") {
+    const e = skSnapEdge(p) || { edge: "left", proj: p.y, len: Sim.nely };
+    const c = Math.max(0, Math.min(e.len, Math.round(e.proj)));
+    skDrag = { t: "wall", edge: e.edge, a: c, b: c, id: -1 };
+    return;
+  }
+  skDrag = { t: skTool, x0: p.x, y0: p.y, x1: p.x, y1: p.y, id: -1 };
+});
+cv.addEventListener("mousemove", (ev) => {
+  if (!sketchMode || !skDrag) return;
+  const p = skMouse(ev);
+  if (skDrag.t === "wall") {
+    const e = skSnapEdge(p);
+    if (e && e.edge === skDrag.edge) skDrag.b = Math.max(0, Math.min(e.len, Math.round(e.proj)));
+  } else { skDrag.x1 = p.x; skDrag.y1 = p.y; }
+  draw();
+});
+window.addEventListener("mouseup", () => {
+  if (!sketchMode || !skDrag) return;
+  const d = skDrag; skDrag = null;
+  if (d.t === "vrect") {
+    const x = Math.round(Math.min(d.x0, d.x1)), y = Math.round(Math.min(d.y0, d.y1));
+    let w = Math.round(Math.abs(d.x1 - d.x0)), h = Math.round(Math.abs(d.y1 - d.y0));
+    if (w < 1) w = 10; if (h < 1) h = 6;
+    skAdd({ t: "vrect", x, y, w, h });
+  } else if (d.t === "vcirc") {
+    const cx = Math.round(d.x0), cy = Math.round(d.y0);
+    let r = Math.round(Math.max(Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0)));
+    if (r < 1) r = 4;
+    skAdd({ t: "vcirc", cx, cy, r });
+  } else if (d.t === "wall") {
+    let a = Math.round(Math.min(d.a, d.b)), b = Math.round(Math.max(d.a, d.b));
+    if (b - a < 1) { a = Math.max(0, a - 3); b = a + 6; }
+    skAdd({ t: "wall", edge: d.edge, a, b });
+  }
+});
+// entity table: the dimensions. Delegated edits so rows re-render freely.
+const SKDEF = {
+  vrect: { icon: "▦", name: "void rect", fields: [["x", 0], ["y", 0], ["w", 1], ["h", 1]] },
+  vcirc: { icon: "◯", name: "void circle", fields: [["cx", 0], ["cy", 0], ["r", 1]] },
+  wall: { icon: "◆", name: "wall", fields: [] },
+  load: { icon: "➔", name: "load", fields: [["ix", 0], ["iy", 0], ["fx", 0.1], ["fy", 0.1]] }
+};
+function renderSketchList() {
+  skList.innerHTML = sketch.entities.map(en => {
+    const def = SKDEF[en.t];
+    let s = '<span class="skrow' + (en.id === sketch.sel ? " sel" : "") + '" data-eid="' + en.id + '"><i class="tic">' + def.icon + "</i>" + def.name;
+    if (en.t === "vrect") s += ' x<input data-f="x" value="' + en.x + '"> y<input data-f="y" value="' + en.y + '"> w<input data-f="w" value="' + en.w + '"> h<input data-f="h" value="' + en.h + '">';
+    else if (en.t === "vcirc") s += ' cx<input data-f="cx" value="' + en.cx + '"> cy<input data-f="cy" value="' + en.cy + '"> r<input data-f="r" value="' + en.r + '">';
+    else if (en.t === "wall") s += ' <select data-f="edge">' + ["left", "right", "top", "bottom"].map(e => "<option" + (e === en.edge ? " selected" : "") + ">" + e + "</option>").join("") + "</select> a<input data-f=\"a\" value=\"" + en.a + "\"> b<input data-f=\"b\" value=\"" + en.b + "\">";
+    else if (en.t === "load") s += ' ix<input data-f="ix" value="' + en.ix + '"> iy<input data-f="iy" value="' + en.iy + '"> fx<input data-f="fx" step="0.1" value="' + en.fx + '"> fy<input data-f="fy" step="0.1" value="' + en.fy + '">';
+    return s + ' <button data-del="' + en.id + '" title="delete">×</button></span>';
+  }).join("") || '<span style="color:#7d8b9b;font-size:11px">empty — drag a void, wall or load onto the stock</span>';
+}
+skList.addEventListener("change", (ev) => {
+  const row = ev.target.closest(".skrow"); if (!row) return;
+  const en = sketch.entities.find(e => e.id === +row.dataset.eid); if (!en) return;
+  const f = ev.target.dataset.f; if (!f) return;
+  if (f === "edge") en.edge = ev.target.value;
+  else {
+    let v = parseFloat(ev.target.value);
+    if (!isFinite(v)) return;
+    if (f === "fx" || f === "fy") v = Math.max(-10, Math.min(10, v));
+    else v = Math.round(v);
+    en[f] = v;
+  }
+  sketch.sel = en.id;
+  renderSketchList();
+  draw();
+});
+skList.addEventListener("click", (ev) => {
+  const del = ev.target.closest("[data-del]");
+  if (del) {
+    sketch.entities = sketch.entities.filter(e => e.id !== +del.dataset.del);
+    renderSketchList(); draw(); return;
+  }
+  const row = ev.target.closest(".skrow");
+  if (row) { sketch.sel = +row.dataset.eid; renderSketchList(); draw(); }
+});
+function compileSketch() {
+  // rasterize entities to the custom path. Physics coords (y-up), clamped.
+  const g = skDims(), nelx = g.nelx, nely = g.nely;
+  const nid = (ix, iy) => ix * (nely + 1) + iy;
+  const fixed = new Set(), loads = [], holes = new Set(), warnings = [];
+  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  for (const en of sketch.entities) {
+    if (en.t === "vrect") {
+      const x = cl(en.x | 0, -nelx, 2 * nelx), y = cl(en.y | 0, -nely, 2 * nely);
+      const w = Math.max(0, en.w | 0), h = Math.max(0, en.h | 0);
+      if (x !== (en.x | 0) || y !== (en.y | 0)) warnings.push("void rect clamped to stock");
+      for (let ex = Math.max(0, x); ex < Math.min(nelx, x + w); ex++)
+        for (let ey = Math.max(0, y); ey < Math.min(nely, y + h); ey++) holes.add(ex * nely + ey);
+    } else if (en.t === "vcirc") {
+      const cx = +en.cx, cy = +en.cy, r = Math.max(0, +en.r);
+      for (let ex = 0; ex < nelx; ex++) for (let ey = 0; ey < nely; ey++) {
+        const dx = ex + 0.5 - cx, dy = ey + 0.5 - cy;
+        if (dx * dx + dy * dy <= r * r) holes.add(ex * nely + ey);
+      }
+    } else if (en.t === "wall") {
+      const len = (en.edge === "left" || en.edge === "right") ? nely : nelx;
+      let a = cl(Math.round(en.a), 0, len), b = cl(Math.round(en.b), 0, len);
+      if (a > b) { const t = a; a = b; b = t; }
+      for (let k = a; k <= b; k++) {
+        const n = en.edge === "left" ? nid(0, k) : en.edge === "right" ? nid(nelx, k)
+          : en.edge === "bottom" ? nid(k, 0) : nid(k, nely);
+        fixed.add(2 * n); fixed.add(2 * n + 1);
+      }
+    } else if (en.t === "load") {
+      const ix = cl(Math.round(en.ix), 0, nelx), iy = cl(Math.round(en.iy), 0, nely);
+      const n = nid(ix, iy);
+      loads.push([n, +en.fx || 0, +en.fy || 0]);
+      // floating check: every adjacent element a void (or none)?
+      const adj = [];
+      if (ix > 0 && iy > 0) adj.push((ix - 1) * nely + iy - 1);
+      if (ix > 0 && iy < nely) adj.push((ix - 1) * nely + iy);
+      if (ix < nelx && iy > 0) adj.push(ix * nely + iy - 1);
+      if (ix < nelx && iy < nely) adj.push(ix * nely + iy);
+      if (adj.length && adj.every(e => holes.has(e))) warnings.push("load at (" + ix + "," + iy + ") floats in void");
+      if (fixed.has(2 * n) || fixed.has(2 * n + 1)) warnings.push("load at (" + ix + "," + iy + ") sits on a wall");
+    }
+  }
+  return { nelx, nely, rmin: g.rmin, fixed: [...fixed], loads, holes: [...holes], warnings };
+}
+// deterministic self-test for CI (no solve, pure raster math)
+window.__sketchSelfTest = () => {
+  const keep = { grid: sketch.grid, entities: sketch.entities, seq: sketch.seq };
+  sketch.grid = "120x20"; if (skGrid) skGrid.value = "120x20";
+  sketch.entities = [
+    { id: 1, t: "wall", edge: "left", a: 0, b: 20 },
+    { id: 2, t: "load", ix: 119, iy: 10, fx: 0, fy: -2 },
+    { id: 3, t: "vrect", x: 60, y: 10, w: 60, h: 10 }
+  ];
+  const c = compileSketch();
+  sketch.grid = keep.grid; sketch.entities = keep.entities; sketch.seq = keep.seq;
+  if (skGrid) skGrid.value = keep.grid;
+  return { holes: c.holes.length, fixed: c.fixed.length, loads: c.loads.length, fy: c.loads[0] && c.loads[0][2], warnings: c.warnings.length };
+};
+function drawSketch() {
+  if (typeof sketchMode === "undefined" || !sketchMode || !Sim.edof) {
+    if (skDrag) { /* preview needs staged grid */ }
+    else return;
+  }
+  const { nelx, nely } = Sim;
+  const epx = cv.width / nelx, epy = cv.height / nely;
+  const X = (ex) => ex * epx, Y = (ey) => (nely - ey) * epy;
+  const drawEnt = (en, preview) => {
+    const sel = en.id === sketch.sel;
+    if (en.t === "vrect") {
+      ctx2d.strokeStyle = sel ? "#ffffff" : "rgba(232,163,61,0.95)"; ctx2d.lineWidth = sel ? 2 : 1.5;
+      ctx2d.strokeRect(X(en.x) + .5, Y(en.y + en.h) + .5, en.w * epx - 1, en.h * epy - 1);
+      ctx2d.fillStyle = "rgba(232,163,61,0.12)";
+      ctx2d.fillRect(X(en.x), Y(en.y + en.h), en.w * epx, en.h * epy);
+    } else if (en.t === "vcirc") {
+      ctx2d.strokeStyle = sel ? "#ffffff" : "rgba(232,163,61,0.95)"; ctx2d.lineWidth = sel ? 2 : 1.5;
+      ctx2d.beginPath(); ctx2d.arc(X(en.cx), Y(en.cy), en.r * epx, 0, 7); ctx2d.stroke();
+    } else if (en.t === "wall") {
+      ctx2d.strokeStyle = sel ? "#ffffff" : "rgba(77,159,255,0.95)"; ctx2d.lineWidth = sel ? 3 : 2;
+      ctx2d.beginPath();
+      if (en.edge === "left") { ctx2d.moveTo(X(0), Y(en.a)); ctx2d.lineTo(X(0), Y(en.b)); }
+      else if (en.edge === "right") { ctx2d.moveTo(X(nelx), Y(en.a)); ctx2d.lineTo(X(nelx), Y(en.b)); }
+      else if (en.edge === "bottom") { ctx2d.moveTo(X(en.a), Y(0)); ctx2d.lineTo(X(en.b), Y(0)); }
+      else { ctx2d.moveTo(X(en.a), Y(nely)); ctx2d.lineTo(X(en.b), Y(nely)); }
+      ctx2d.stroke();
+    } else if (en.t === "load") {
+      const px = X(en.ix), py = Y(en.iy);
+      const m = Math.hypot(en.fx, en.fy) || 1, L = 26;
+      const dx = en.fx / m * L, dy = -en.fy / m * L; // physics y-up -> canvas y-down
+      const tx = px + dx, ty = py + dy;
+      ctx2d.strokeStyle = sel ? "#ffffff" : "rgba(255,93,93,0.95)"; ctx2d.fillStyle = ctx2d.strokeStyle; ctx2d.lineWidth = 2;
+      ctx2d.beginPath(); ctx2d.moveTo(px - dx * 0.6, py - dy * 0.6); ctx2d.lineTo(tx, ty); ctx2d.stroke();
+      const a = Math.atan2(ty - (py - dy * 0.6), tx - (px - dx * 0.6));
+      ctx2d.beginPath(); ctx2d.moveTo(tx, ty);
+      ctx2d.lineTo(tx - 8 * Math.cos(a - 0.4), ty - 8 * Math.sin(a - 0.4));
+      ctx2d.lineTo(tx - 8 * Math.cos(a + 0.4), ty - 8 * Math.sin(a + 0.4));
+      ctx2d.closePath(); ctx2d.fill();
+      ctx2d.font = "10px ui-monospace,monospace";
+      ctx2d.fillText(en.fx + "," + en.fy, tx + 4, ty - 4);
+    }
+  };
+  for (const en of sketch.entities) drawEnt(en);
+  if (skDrag && skDrag.id === -1) {
+    if (skDrag.t === "vrect") drawEnt({ t: "vrect", id: -2, x: Math.min(skDrag.x0, skDrag.x1), y: Math.min(skDrag.y0, skDrag.y1), w: Math.abs(skDrag.x1 - skDrag.x0), h: Math.abs(skDrag.y1 - skDrag.y0) });
+    else if (skDrag.t === "vcirc") drawEnt({ t: "vcirc", id: -2, cx: skDrag.x0, cy: skDrag.y0, r: Math.max(Math.abs(skDrag.x1 - skDrag.x0), Math.abs(skDrag.y1 - skDrag.y0)) });
+    else if (skDrag.t === "wall") drawEnt({ t: "wall", id: -2, edge: skDrag.edge, a: Math.min(skDrag.a, skDrag.b), b: Math.max(skDrag.a, skDrag.b) });
+  }
+}
 function paintAt(ev) {
   const r = cv.getBoundingClientRect();
   const gx = (ev.clientX - r.left) / r.width * Sim.nelx;
