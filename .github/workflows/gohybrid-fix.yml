@@ -1,0 +1,48 @@
+name: gohybrid-fix
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/gohybrid-fix.yml"
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: clone Go-Hybrid at pinned sha
+        run: |
+          git clone https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
+          cd /tmp/gohybrid && git checkout 10d28c5da71759b553997d0998d64963996200 && git log --oneline -1
+      - name: fetch fix files
+        run: |
+          mkdir -p /tmp/fix
+          curl -sL https://user.uploads.dev/file/bd4a725b822f1c9ff222cc74bc1b6b9a.bin -o /tmp/fix/patch_foreign_rs.py
+          curl -sL https://user.uploads.dev/file/0944a42e24a9a6037b0f02afcc4fb5f4.bin -o /tmp/fix/patch_shapes_rs.py
+          curl -sL https://user.uploads.dev/file/833a4093f75e41e4a12e4e467c73c9c2.bin -o /tmp/fix/time_time_surface.rs
+          curl -sL https://user.uploads.dev/file/77c3d11e6a259e193a73aa02d437a3b9.bin -o /tmp/fix/time_time_emit.rs
+          ls -la /tmp/fix
+      - name: apply patches + install tests
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          python3 /tmp/fix/patch_foreign_rs.py crates/hy-check/src/foreign.rs
+          python3 /tmp/fix/patch_shapes_rs.py crates/hy-emit/src/shapes.rs
+          cp /tmp/fix/time_time_surface.rs crates/hy-check/tests/zz_time_time_surface.rs
+          cp /tmp/fix/time_time_emit.rs crates/hy-emit/tests/zz_time_time_emit.rs
+          grep -c TIME_TIME crates/hy-check/src/foreign.rs
+      - name: full hy-check suite with fix
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          set -o pipefail
+          cargo test -p hy-check 2>&1 | tee /tmp/hycheck.log | grep -E "^test result|^error|FAILED|failures:" | tail -25
+      - name: full hy-emit suite with fix
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          set -o pipefail
+          cargo test -p hy-emit 2>&1 | tee /tmp/hyemit.log | grep -E "^test result|^error|FAILED|failures:" | tail -25
+      - name: new surface tests verbose
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          set -o pipefail
+          cargo test -p hy-check --test zz_time_time_surface -- --nocapture 2>&1 | tail -15
+          cargo test -p hy-emit --test zz_time_time_emit -- --nocapture 2>&1 | tail -12
