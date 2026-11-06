@@ -1,0 +1,32 @@
+name: gohybrid-probe
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/gohybrid-probe.yml"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: clone Go-Hybrid main
+        run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
+      - name: replicate their test (foreign_method_surface suite)
+        working-directory: /tmp/gohybrid/compiler
+        run: cargo test -p hy-check --test foreign_method_surface -- --nocapture
+      - name: ONE test - time.time phantom probe
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          cat > crates/hy-check/tests/zz_time_time_probe.rs <<'RS'
+          use hy_check::{check_file, Verdict};
+          #[test]
+          fn time_time_phantom_probe() {
+              let src = "struct stats {\n    t time.time\n    n int\n}\nfn main() {\n    var s stats\n    s.t.totally_fake()\n    fmt.println(\"n={s.n}\")\n}\n";
+              let ast = hy_syntax::parse_file("probe.hy", src).expect("parse");
+              let r = check_file(&ast);
+              eprintln!("PROBE verdict={:?} diags={:?}", r.verdict, r.diagnostics.iter().map(|d| (d.code.clone(), d.message.clone())).collect::<Vec<_>>());
+              // Record only: fail-open predicts ACCEPT with 0 diags. Do not assert yet.
+          }
+          RS
+          cargo test -p hy-check --test zz_time_time_probe -- --nocapture
