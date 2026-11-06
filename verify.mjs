@@ -27,7 +27,7 @@ await runPreset(null, "canvas-cantilever.png");
 await runPreset("bridge", "canvas-bridge.png");
 await runPreset("mbb", "canvas-mbb.png");
 await runPreset("lbracket", "canvas-lbracket.png");
-// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends ÃÂÃÂÃÂÃÂvm
+// pro path (topopt-port): penal continuation flag shows in stats, stress readout appends vm
 await page.check("#penalChk");
 await page.click("#runBtn");
 await page.waitForFunction(() => !document.getElementById("runBtn").disabled, { timeout: 180000 });
@@ -37,7 +37,7 @@ if (!/pro:penal=cont/.test(proStats)) { log("PRO-PENAL-FAIL"); process.exitCode 
 await page.click("#stressBtn");
 const sStats = await page.textContent("#stats");
 log("PRO-STRESS STATS:", sStats);
-if (!/ÃÂÃÂÃÂÃÂvm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
+if (!/vm max/.test(sStats)) { log("PRO-STRESS-FAIL"); process.exitCode = 1; }
 
 // sketch input: page may lag the deploy; reload into fresh code, else skip
 let skHook = await page.evaluate(() => typeof window.__sketchSelfTest === "function").catch(() => false);
