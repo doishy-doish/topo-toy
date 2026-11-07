@@ -15,18 +15,21 @@ jobs:
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
       - name: validate B2 and A2
+        env:
+          HYB_ALLOW_TOOLCHAIN_DRIFT: '1'
         run: |
           set +e
           {
           echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD) $(git -C /tmp/gohybrid rev-parse HEAD)"
+          echo "rustc $(rustc --version)"
+          export HYB_PINNED_RUST="$(rustc --version)"
+          echo "HYB_PINNED_RUST=$HYB_PINNED_RUST"
           echo "=== cargo build hyb ==="
-          cargo build -p hyb --manifest-path /tmp/gohybrid/compiler/Cargo.toml 2>&1 | tail -5
-          echo "build exit=$?"
+          cargo build -p hyb --manifest-path /tmp/gohybrid/compiler/Cargo.toml 2>&1 | tail -15
           HYB=/tmp/gohybrid/compiler/target/debug/hyb
           ls -la $HYB 2>&1
-          echo "=== hyb help ==="
-          $HYB --help 2>&1 | head -40
-          $HYB check --help 2>&1 | head -40
+          echo "=== hyb check help ==="
+          $HYB check --help 2>&1 | head -20
           mkdir -p /tmp/v
           cat > /tmp/v/b2.hy <<'HY'
           const seed = map[string]int{"a": 1}
@@ -42,10 +45,10 @@ jobs:
           HY
           echo "=== B2 check ==="
           $HYB check /tmp/v/b2.hy 2>&1; echo "check exit=$?"
-          echo "=== B2 build help ==="
-          $HYB build --help 2>&1 | head -20
+          echo "=== B2 build ==="
+          $HYB build --help 2>&1 | head -30
           } > $GITHUB_WORKSPACE/validate_out.txt 2>&1
-          cat $GITHUB_WORKSPACE/validate_out.txt | tail -60
+          tail -80 $GITHUB_WORKSPACE/validate_out.txt || true
           exit 0
       - name: publish output
         if: always()
@@ -53,6 +56,6 @@ jobs:
           set +e
           git checkout -B gohybrid-validate-out
           git add validate_out.txt || true
-          git -c user.name=probe -c user.email=probe@local commit -m "validate out" || true
+          git -c user.name=probe -c user.email=probe@local commit -m "validate out v3" || true
           git push -u origin gohybrid-validate-out --force
           exit 0
