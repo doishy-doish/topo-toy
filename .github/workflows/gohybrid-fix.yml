@@ -19,7 +19,7 @@ jobs:
           mkdir -p /tmp/fix
           curl -sL https://user.uploads.dev/file/bd4a725b822f1c9ff222cc74bc1b6b9a.bin -o /tmp/fix/patch_foreign_rs.py
           curl -sL https://user.uploads.dev/file/0944a42e24a9a6037b0f02afcc4fb5f4.bin -o /tmp/fix/patch_shapes_rs.py
-          curl -sL https://user.uploads.dev/file/833a4093f75e41e4a12e4e467c73c9c2.bin -o /tmp/fix/time_time_surface.rs
+          curl -sL https://user.uploads.dev/file/4b012fd8d310203a6cbd32377ebd366d.bin -o /tmp/fix/time_time_surface.rs
           curl -sL https://user.uploads.dev/file/77c3d11e6a259e193a73aa02d437a3b9.bin -o /tmp/fix/time_time_emit.rs
           ls -la /tmp/fix
       - name: apply patches + install tests
@@ -41,6 +41,7 @@ jobs:
           set -o pipefail
           cargo test -p hy-emit 2>&1 | tee /tmp/hyemit.log | grep -E "^test result|^error|FAILED|failures:" | tail -25
       - name: new surface tests verbose
+        if: always()
         working-directory: /tmp/gohybrid/compiler
         run: |
           set -o pipefail
