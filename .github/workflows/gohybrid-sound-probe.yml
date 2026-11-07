@@ -11,7 +11,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: method const probes
+      - name: free vs method
         working-directory: /tmp/gohybrid/compiler
         run: |
           set +e
@@ -28,27 +28,21 @@ jobs:
             }
           }
           #[test]
-          fn method_matrix() {
-            let cases: Vec<(&str, &str)> = vec![
-              ("M_direct", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o ops) clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    var o ops\n    o.clobber(seed)\n}\n"),
-              ("M_value_alias", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o ops) clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    var o ops\n    f := o.clobber\n    f(seed)\n}\n"),
-              ("M_generic", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o ops) clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    var o ops\n    o.clobber_gen[int](seed, 42)\n}\n"),
-              ("M_ptr", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o *ops) clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    var o ops\n    o.clobber(seed)\n}\n"),
-            ];
-            let mut out = String::new();
-            for (name, src) in &cases {
-              let v = verdict(src);
-              eprintln!("CASE {name} {v}");
-              out.push_str(&format!("{name} {v}\n"));
-            }
+          fn free_vs_method() {
+            let free_ctl = "const seed = map[string]int{\"a\": 1}\nfn clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    clobber(seed)\n}\n";
+            let m_direct = "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o ops) clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    var o ops\n    o.clobber(seed)\n}\n";
+            let vf = verdict(free_ctl);
+            let vm = verdict(m_direct);
+            eprintln!("FREE {vf}");
+            eprintln!("METHOD {vm}");
             let ws = std::env::var("GITHUB_WORKSPACE").unwrap_or("/tmp".to_string());
             let head2 = std::process::Command::new("git").args(["-C","/tmp/gohybrid","rev-parse","HEAD"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or("unknown".into());
-            let out2 = format!("head={head2}\n{out}");
+            let out2 = format!("head={head2}\nfree {vf}\nmethod {vm}\n");
             std::fs::write(format!("{ws}/sound_matrix.txt"), &out2).ok();
             std::fs::write("/tmp/sound_matrix.txt", &out2).ok();
           }
           RS
-          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -20
+          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -12
           cp /tmp/sound_matrix.txt $GITHUB_WORKSPACE/sound_matrix.txt 2>/dev/null || true
           exit 0
       - name: publish matrix
@@ -56,5 +50,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "method matrix" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "free vs method" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
