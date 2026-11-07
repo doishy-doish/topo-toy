@@ -1,0 +1,52 @@
+name: acp-diag5
+on: [workflow_dispatch]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: acp-home-x, key: acp-keystore-v1 }
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "22f0d11dc767c9dcffa3ba25b0442717" --json > cfg.json 2>&1; echo "EXIT_C=$?"
+          head -c 600 cfg.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1
+          if grep -q "success" use.txt 2>/dev/null; then echo "AUTH=YES" > auth.txt; else echo "AUTH=NO" > auth.txt; acp configure start --json > login.json 2>/dev/null; fi
+          cat auth.txt
+          echo "---KEYSTORE-TREE---"
+          find acp-home-x | head -40 > keystore-tree.txt; cat keystore-tree.txt; echo
+          echo "---HOME-CONFIG-HUNT (names only)---"
+          ls -la ~/.config 2>/dev/null | head -20 > home-config.txt; cat home-config.txt; echo
+          find /home/runner -maxdepth 4 -name "*.json" -newer /usr/local/bin/npm 2>/dev/null | grep -viE "node|npm|action|runner|cache" | head -20 >> home-config.txt; cat home-config.txt
+          echo "---SIGNER-BIN---"
+          ls -la /usr/local/lib/node_modules/@virtuals-protocol/acp-cli/bin/ > signer-bin.txt 2>&1; cat signer-bin.txt; echo
+          file /usr/local/lib/node_modules/@virtuals-protocol/acp-cli/bin/acp-cli-signer-linux >> signer-bin.txt 2>&1 || true; cat signer-bin.txt
+          if grep -q "AUTH=YES" auth.txt; then
+            echo "---BROWSE-FULL-ERROR---"
+            acp browse "security audit" --top-k 3 --json > browse-full.json 2>&1; echo "EXIT_B=$?"
+            wc -c browse-full.json; tail -c 6000 browse-full.json; echo
+            echo "---JOB-LIST---"
+            acp job list --json > jobs.json 2>&1; echo "EXIT_J=$?"
+            head -c 3000 jobs.json; echo
+            echo "---WALLET---"
+            acp wallet --help > wallet-help.txt 2>&1; head -c 2000 wallet-help.txt; echo
+          fi
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-diag5
+          for f in cfg.json use.txt auth.txt login.json keystore-tree.txt home-config.txt signer-bin.txt browse-full.json jobs.json wallet-help.txt done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "signer diag" || echo NO_CHANGES
+          git push -f origin acp-diag5
