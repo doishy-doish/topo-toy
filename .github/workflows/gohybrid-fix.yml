@@ -27,8 +27,10 @@ jobs:
         run: |
           export HYB_ALLOW_TOOLCHAIN_DRIFT=1
           go version
-          cargo build -p hyb 2>&1 | tail -2
+          cargo build -p hyb > /tmp/hyb-build.log 2>&1; CARGO_EXIT=$?; echo "CARGO_EXIT=$CARGO_EXIT"
+          grep -B2 -A10 '^error' /tmp/hyb-build.log | head -60
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
+          ls -la $BIN
           mkdir -p /tmp/gowork && cd /tmp/gowork && rm -f phantom.hy *.go phantombin build.log
           printf '%s\n' 'import "time"' 'struct stats {' '    t time.time' '    n int' '}' 'fn main() {' '    var s stats' '    s.t.totally_fake()' '    fmt.println("n={s.n}")' '}' > phantom.hy
           $BIN check phantom.hy > check.log 2>&1; CHECK_EXIT=$?
