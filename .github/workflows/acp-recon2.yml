@@ -1,0 +1,22 @@
+name: acp-recon2
+on: { workflow_dispatch: null }
+permissions: { contents: read }
+jobs:
+  r:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > /dev/null 2>&1
+          echo "---LIST---"; acp agent list --json 2>&1 | head -c 1500; echo
+          AID=$(acp agent list --json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const a=Array.isArray(j)?j:(j.agents||j.data||[]);console.log(a[0]&&(a[0].id||a[0].agentId||''))}catch(e){}})")
+          echo "AID=$AID"
+          acp agent use "$AID" 2>&1 | head -5
+          echo "---WHOAMI---"; acp agent whoami --json 2>&1 | head -c 1500; echo
+          echo "---SIGNER-POLICY---"; acp agent signer-policy --agent-id "$AID" 2>&1 | head -c 1000; echo
+          echo "---BROWSE---"; acp browse --help 2>&1 | head -30
+          echo "---JOB-HELP---"; acp job --help 2>&1 | head -40
+          echo "---OFFERING-HELP---"; acp offering --help 2>&1 | head -40
