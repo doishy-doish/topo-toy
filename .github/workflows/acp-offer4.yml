@@ -1,0 +1,48 @@
+name: acp-offer4
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "22f0d11dc767c9dcffa3ba25b0442717" --json > cfg.json 2>&1; echo "EXIT_C=$?"
+          head -c 600 cfg.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1; echo "USE=$?"
+          if grep -q "success" use.txt 2>/dev/null; then echo "AUTH=YES" > auth.txt; else echo "AUTH=NO" > auth.txt; fi
+          cat auth.txt
+          if grep -q "AUTH=YES" auth.txt; then
+            echo "---KEYSTORE-BEFORE---"
+            find acp-home-x -type f | head -20 > keystore-before.txt; cat keystore-before.txt; echo
+            echo "---SIGNER-STATUS-REPLAY---"
+            acp agent signer-status --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --request-id "fa8f19c1af5e07c09c488a5ea344baf5" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFOnPjD1vp2H+UR+YjMguY03A71WGCJbIYmxrhUV6AOtwDOy1+YTtDlTuBIUYuiBc9BUWmVwUppZQilphf4E2aQ==" --json > signer-replay.json 2>&1; echo "EXIT_S=$?"
+            head -c 2000 signer-replay.json; echo
+            echo "---KEYSTORE-AFTER---"
+            find acp-home-x -type f | head -20 > keystore-after.txt; cat keystore-after.txt; echo
+            diff keystore-before.txt keystore-after.txt > keystore-diff.txt 2>&1 || true; cat keystore-diff.txt
+            echo "---BROWSE---"
+            acp browse "security audit" --top-k 10 --json > browse1.json 2>&1; echo "EXIT_B1=$?"
+            head -c 4000 browse1.json; echo
+            echo "---GENKEY-HELP---"
+            acp agent generate-signer-key --help > genkey-help.txt 2>&1; head -c 1500 genkey-help.txt; echo
+            echo "---LINK-HELP---"
+            acp agent link --help > link-help.txt 2>&1; head -c 2000 link-help.txt; echo
+          fi
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-offer4
+          for f in cfg.json use.txt auth.txt keystore-before.txt keystore-after.txt keystore-diff.txt signer-replay.json browse1.json genkey-help.txt link-help.txt done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "signer repersist test" || echo NO_CHANGES
+          git push -f origin acp-offer4
