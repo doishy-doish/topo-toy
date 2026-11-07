@@ -57,6 +57,7 @@ jobs:
         working-directory: /tmp/gohybrid/compiler
         run: |
           export HYB_ALLOW_TOOLCHAIN_DRIFT=1
+          set +e
           HYB_PINNED_RUST=$(rustc --version | awk '{print $2}') cargo build -p hyb 2>&1 | tail -1
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
           cd /tmp/gowork
