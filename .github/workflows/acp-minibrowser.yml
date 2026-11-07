@@ -13,8 +13,8 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq dbus-x11
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: dbus-run-session -- node acp-attempt/acp-recon.mjs
-        env: { IS_TESTNET: "true" }
+      - run: dbus-run-session -- node acp-attempt/acp-register.mjs
+        env: { IS_TESTNET: "false" }
       - run: |
           git config user.name "doishy-doish"
           git config user.email "doishy-doish@users.noreply.github.com"
