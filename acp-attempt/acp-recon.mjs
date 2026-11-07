@@ -30,7 +30,7 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "1e-true-mainnet");
+step("script-version", "1f-login-modal");
 
 step("node", process.version);
 step("install-cli", JSON.stringify(run("npm", ["i", "-g", "@virtuals-protocol/acp-cli"])));
@@ -109,6 +109,36 @@ if (url) {
     }
     step("login-page", JSON.stringify(info));
     await page.screenshot({ path: "acp-shots/login.png" });
+    // click the in-card Login (the one under "EconomyOS Authentication"), not nav
+    const clicked = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll("button")].filter((b) => b.innerText.trim() === "Login");
+      const card = btns.find((b) => {
+        let el = b.parentElement;
+        for (let i = 0; i < 5 && el; i++) {
+          if ((el.innerText || "").includes("EconomyOS Authentication")) return true;
+          el = el.parentElement;
+        }
+        return false;
+      }) || btns[btns.length - 1];
+      if (card) { card.click(); return true; }
+      return false;
+    });
+    step("login-clicked", String(clicked));
+    await page.waitForTimeout(6000);
+    const modal = await page.evaluate(() => ({
+      url: location.href,
+      buttons: [...document.querySelectorAll("button")]
+        .map((b) => b.innerText.trim())
+        .filter(Boolean)
+        .slice(0, 40),
+      inputs: [...document.querySelectorAll("input")]
+        .map((i) => ({ ph: i.placeholder || null, type: i.type, name: i.name || null }))
+        .slice(0, 20),
+      iframes: [...document.querySelectorAll("iframe")].map((f) => (f.src || "").slice(0, 160)).slice(0, 10),
+      text: document.body.innerText.slice(0, 2500),
+    }));
+    step("login-modal", JSON.stringify(modal));
+    await page.screenshot({ path: "acp-shots/login-modal.png" });
     await page.screenshot({ path: "acp-shots/login-full.png", fullPage: true });
   } catch (e) {
     step("browser-fail", String(e).slice(0, 1000));
