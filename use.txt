@@ -1,0 +1,3 @@
+success: true
+activeAgent: doishy-scout
+walletAddress: 0xdfe69deeed691eb6944ca91b7fb4587e2e904242
