@@ -8,7 +8,7 @@ on:
       key_id:
         description: 'Repo secrets key id'
         required: true
-permissions: { contents: read }
+permissions: { contents: write }
 jobs:
   login-wait:
     runs-on: ubuntu-24.04
@@ -24,6 +24,16 @@ jobs:
           export ACP_CONFIG_DIR=$PWD/acp-home-login
           acp configure start --json | tee start.json
           echo "ACP_START_DONE"
+      - name: publish login URL for operator
+        run: |
+          node -e "const j=require('./start.json');console.log('LOGIN_URL='+j.url);console.log('LOGIN_REQ='+j.requestId)"
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-minibrowser
+          cp start.json acp-login-start.json
+          git add -f acp-login-start.json
+          git commit -m "acp login url $(date -u +%FT%TZ)" || echo NO_CHANGES
+          git push -f origin acp-minibrowser
       - name: wait for operator login then complete
         run: |
           export ACP_CONFIG_DIR=$PWD/acp-home-login
@@ -33,7 +43,7 @@ jobs:
           for i in $(seq 1 120); do
             if acp configure complete --request-id "$REQ" --json > complete.json 2>complete.err; then
               ST=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('complete.json','utf8')).status||'')}catch(e){console.log('')}")
-              echo "poll $i status=$ST"
+              if [ "$((i % 15))" = "0" ]; then echo "poll $i status=$ST"; fi
               if [ "$ST" != "pending" ] && [ -n "$ST" ]; then echo ACP_COMPLETE_OK; DONE=1; break; fi
             else
               echo "poll $i exit nonzero"
