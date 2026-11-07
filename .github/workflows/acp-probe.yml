@@ -1,0 +1,20 @@
+name: acp-probe
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 'requestId to complete'
+        required: true
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-probe
+          export ACP_CONFIG_DIR=$PWD/acp-home-probe
+          acp configure complete --request-id "${{ inputs.request_id }}" --json > complete.json 2>complete.err; echo "EXIT=$?"
+          node -e "const fs=require('fs');let j={};try{j=JSON.parse(fs.readFileSync('complete.json','utf8'))}catch(e){console.log('PARSE_FAIL');process.exit(0)};const redact=(v)=>typeof v==='string'?(v.length>12?v.slice(0,8)+'...len'+v.length:v):v;const out={};for(const k of Object.keys(j))out[k]=redact(j[k]);console.log('COMPLETE_KEYS='+JSON.stringify(out).slice(0,2000))"
+          echo "---STDERR---"; head -c 500 complete.err
