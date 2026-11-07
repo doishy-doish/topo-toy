@@ -30,6 +30,7 @@ const run = (cmd, args, extraEnv = {}) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
+step("script-version", "1d-mainnet-curl");
 
 step("node", process.version);
 step("install-cli", JSON.stringify(run("npm", ["i", "-g", "@virtuals-protocol/acp-cli"])));
