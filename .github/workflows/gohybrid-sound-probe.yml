@@ -11,7 +11,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: mayshare via method
+      - name: fnvalue free alias
         working-directory: /tmp/gohybrid/compiler
         run: |
           set +e
@@ -19,7 +19,7 @@ jobs:
           use hy_check::check_file;
           fn verdict(src: &str) -> String {
             match hy_syntax::parse_file("probe.hy", src) {
-              Err(e) => format!("ParseErr {:?}", e).chars().take(200).collect(),
+              Err(e) => format!("ParseErr {:?}", e).chars().take(150).collect(),
               Ok(ast) => {
                 let r = check_file(&ast);
                 let codes: Vec<String> = r.diagnostics.iter().map(|d| d.code.clone()).collect();
@@ -28,26 +28,21 @@ jobs:
             }
           }
           #[test]
-          fn mayshare_method() {
-            let cases: Vec<(&str, &str)> = vec![
-              ("free_link", "struct holder {\n    m map[string]int\n}\nfn link(h *holder, x map[string]int) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    link(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
-              ("method_link", "struct holder {\n    m map[string]int\n}\nstruct ops {}\nfn (o ops) link(h *holder, x map[string]int) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    var o ops\n    o.link(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
-              ("method_value_link", "struct holder {\n    m map[string]int\n}\nstruct ops {}\nfn (o ops) link(h *holder, x map[string]int) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    var o ops\n    f := o.link\n    f(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
-            ];
-            let mut out = String::new();
-            for (name, src) in &cases {
-              let v = verdict(src);
-              eprintln!("CASE {name} {v}");
-              out.push_str(&format!("{name} {v}\n"));
-            }
+          fn fnvalue_free() {
+            let a = "const seed = map[string]int{\"a\": 1}\nfn clobber(m map[string]int) {\n    m[\"a\"] = 9\n}\nfn main() {\n    clobber(seed)\n}\n";
+            let b = "const seed = map[string]int{\"a\": 1}\nfn clobber(m map[string]int) {\n    m[\"a\"] = 9\n}\nfn main() {\n    f := clobber\n    f(seed)\n}\n";
+            let va = verdict(a);
+            let vb = verdict(b);
+            eprintln!("DIRECT {va}");
+            eprintln!("ALIAS {vb}");
             let ws = std::env::var("GITHUB_WORKSPACE").unwrap_or("/tmp".to_string());
             let head2 = std::process::Command::new("git").args(["-C","/tmp/gohybrid","rev-parse","HEAD"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or("unknown".into());
-            let out2 = format!("head={head2}\n{out}");
+            let out2 = format!("head={head2}\ndirect {va}\nalias {vb}\n");
             std::fs::write(format!("{ws}/sound_matrix.txt"), &out2).ok();
             std::fs::write("/tmp/sound_matrix.txt", &out2).ok();
           }
           RS
-          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -12
+          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -10
           cp /tmp/sound_matrix.txt $GITHUB_WORKSPACE/sound_matrix.txt 2>/dev/null || true
           exit 0
       - name: publish matrix
@@ -55,5 +50,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "mayshare method" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "fnvalue free" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
