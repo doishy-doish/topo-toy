@@ -14,16 +14,16 @@ jobs:
           mkdir -p acp-home-x
           export ACP_CONFIG_DIR=$PWD/acp-home-x
           acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg.json 2>&1; echo "CFG_EXIT=$?"
-          head -c 800 cfg.json; echo
           acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1; echo "USE_EXIT=$?"
-          head -c 500 use.txt; echo
-          acp agent --help > agent-help.txt 2>&1; echo "HELP_EXIT=$?"
-          acp agent signer-status --request-id "499c3fae9576a7020762796b10978842" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3007ADjMhRG19CDRnozGE5lH0SFH6XtA5QeID3Q/g1QA89Yu4OtnU+ur0ZwG/4kWUctr73fKOvlKlTQy25/Utg==" --json > signer-status.json 2>signer-status.err; echo "EXIT1=$?"
-          echo "---OUT1---"; head -c 2000 signer-status.json; echo; echo "---ERR1---"; head -c 800 signer-status.err; echo
-          acp agent signer-status --request-id "e0542728cfbdec37b004a340f044a3e0" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEasev2pxgpqmfH5I6hQhZIVzuQph7I6QSBJ5duxaHeFD6dU/5F8YTh+Syc5V75w03T96WDm+AOac+L35Xw+Yy/A==" --json > signer-status2.json 2>signer-status2.err; echo "EXIT2=$?"
-          echo "---OUT2---"; head -c 2000 signer-status2.json; echo; echo "---ERR2---"; head -c 800 signer-status2.err; echo
-          acp agent add-signer --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --policy restricted --no-wait --json > signer-fresh.json 2>signer-fresh.err; echo "EXIT3=$?"
-          echo "---OUT3---"; head -c 2000 signer-fresh.json; echo; echo "---ERR3---"; head -c 800 signer-fresh.err; echo
+          echo "---SIGNER-STATUS fa8f---"
+          acp agent signer-status --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --request-id "fa8f19c1af5e07c09c488a5ea344baf5" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFOnPjD1vp2H+UR+YjMguY03A71WGCJbIYmxrhUV6AOtwDOy1+YTtDlTuBIUYuiBc9BUWmVwUppZQilphf4E2aQ==" --json > signer-done.json 2>signer-done.err; echo "EXIT_DONE=$?"
+          head -c 2000 signer-done.json; echo; echo "---ERR---"; head -c 800 signer-done.err; echo
+          echo "---SIGNER-POLICY---"
+          acp agent signer-policy --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > signer-policy.json 2>&1; echo "EXIT_POL=$?"
+          head -c 1500 signer-policy.json; echo
+          echo "---WHOAMI---"
+          acp agent whoami --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > whoami.json 2>&1 || acp agent whoami > whoami.json 2>&1; echo "EXIT_WHO=$?"
+          head -c 1500 whoami.json; echo
           echo DONE > done.txt
           exit 0
       - name: commit results
@@ -32,6 +32,6 @@ jobs:
           git config user.name "doishy-doish"
           git config user.email "doishy-doish@users.noreply.github.com"
           git checkout -B acp-signer-status
-          for f in cfg.json use.txt agent-help.txt signer-status.json signer-status.err signer-status2.json signer-status2.err signer-fresh.json signer-fresh.err done.txt; do [ -f "$f" ] && git add -f "$f"; done
-          git commit -m "signer-status check" || echo NO_CHANGES
+          for f in cfg.json use.txt signer-done.json signer-done.err signer-policy.json whoami.json done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "signer complete fa8f" || echo NO_CHANGES
           git push -f origin acp-signer-status
