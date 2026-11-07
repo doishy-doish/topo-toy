@@ -1,0 +1,18 @@
+Usage: acp offering create [options]
+
+Create a new offering for the active agent
+
+Options:
+  --name <name>             Offering name
+  --description <text>      Description
+  --price-type <type>       Price type: fixed or percentage
+  --price-value <value>     Price value
+  --sla-minutes <minutes>   SLA in minutes
+  --requirements <value>    Requirements (string or JSON schema)
+  --deliverable <value>     Deliverable (string or JSON schema)
+  --required-funds          Require funds
+  --no-required-funds       Do not require funds
+  --hidden                  Hidden offering
+  --no-hidden               Visible offering
+  --subscription-ids <ids>  Comma-separated subscription UUIDs to attach
+  -h, --help                display help for command

@@ -1,0 +1,13 @@
+file:///usr/local/lib/node_modules/@virtuals-protocol/acp-cli/dist/bin/acp.js:955
+    throw new CliError(
+          ^
+
+CliError: Not authenticated.
+    at resolveToken (file:///usr/local/lib/node_modules/@virtuals-protocol/acp-cli/dist/bin/acp.js:955:11)
+    at async getClient (file:///usr/local/lib/node_modules/@virtuals-protocol/acp-cli/dist/bin/acp.js:1009:44)
+    at async Command.<anonymous> (file:///usr/local/lib/node_modules/@virtuals-protocol/acp-cli/dist/bin/acp.js:7308:26) {
+  code: 'NOT_AUTHENTICATED',
+  recovery: 'Run `acp configure` to authenticate.'
+}
+
+Node.js v22.23.4
