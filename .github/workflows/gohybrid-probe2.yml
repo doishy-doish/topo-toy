@@ -1,0 +1,129 @@
+name: gohybrid-probe2
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - .github/workflows/gohybrid-probe2.yml
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: clone upstream fresh main plus anchors
+        run: |
+          git clone --depth 50 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
+          cd /tmp/gohybrid && git log --oneline -1 && git log -1 --format=%H
+          F=compiler/crates/hy-check/src/foreign.rs
+          grep -q "fn foreign_method_surface" $F || { echo "ANCHOR FAIL fms"; exit 1; }
+          grep -q "TIME_TICKER" $F || { echo "ANCHOR FAIL ticker"; exit 1; }
+          grep -q "normalize_go_ident_to_snake" $F || { echo "ANCHOR FAIL norm"; exit 1; }
+          grep -q "is_curated_package_member" $F || { echo "ANCHOR FAIL curated"; exit 1; }
+          echo "anchors ok"
+      - name: build hyb clean tree
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          export HYB_ALLOW_TOOLCHAIN_DRIFT=1
+          set +e
+          go version
+          HYB_PINNED_RUST=$(rustc --version | awk '{print $2}') cargo build -p hyb > /tmp/hyb-build.log 2>&1; echo "CARGO_EXIT=$?"
+          sed -r 's/\x1b\[[0-9;]*m//g' /tmp/hyb-build.log | grep -B2 -A12 -iE '^error' | head -40
+          ls -la /tmp/gohybrid/compiler/target/debug/hyb
+      - name: phantom matrix duration values header mux transport
+        run: |
+          set +e
+          BIN=/tmp/gohybrid/compiler/target/debug/hyb
+          rm -rf /tmp/gowork && mkdir -p /tmp/gowork && cd /tmp/gowork
+          probe() {
+            name="$1"
+            mkdir -p "$name" && cd "$name" && rm -f phantom.hy *.go phantombin* check.log build.log
+            cat > phantom.hy
+            $BIN check phantom.hy > check.log 2>&1; C=$?
+            B="skip"; G="skip"
+            if [ "$C" = "0" ]; then
+              $BIN build phantom.hy -o phantombin > build.log 2>&1; B=$?
+              if ls *.go >/dev/null 2>&1; then go build ./... >> build.log 2>&1; G=$?; else G="n-a"; fi
+            fi
+            echo "PROBE $name check=$C build=$B gobuild=$G"
+            grep -iE "HYB-E|no field or method|totally_fake|undefined|error" check.log build.log 2>/dev/null | head -8
+            cd /tmp/gowork
+          }
+          probe p0-control-time <<'EOF'
+          import "time"
+          struct stats {
+              t time.time
+              n int
+          }
+          fn main() {
+              var s stats
+              s.t.totally_fake()
+              fmt.println("n={s.n}")
+          }
+          EOF
+          probe p1-duration-field <<'EOF'
+          import "time"
+          struct holder {
+              d time.duration
+          }
+          fn main() {
+              var h holder
+              h.d.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          probe p2-duration-ctor <<'EOF'
+          import "time"
+          fn main() {
+              var d = time.seconds(5)
+              d.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          probe p3-url-values <<'EOF'
+          import "url"
+          struct holder {
+              v url.values
+          }
+          fn main() {
+              var h holder
+              h.v.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          probe p4-http-header <<'EOF'
+          import "http"
+          struct holder {
+              h http.header
+          }
+          fn main() {
+              var h holder
+              h.h.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          probe p5-http-mux <<'EOF'
+          import "http"
+          struct holder {
+              m http.serve_mux
+          }
+          fn main() {
+              var h holder
+              h.m.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          probe p6-http-transport <<'EOF'
+          import "http"
+          struct holder {
+              t http.transport
+          }
+          fn main() {
+              var h holder
+              h.t.totally_fake()
+              fmt.println("done")
+          }
+          EOF
+          echo "## probe matrix done" >> $GITHUB_STEP_SUMMARY
