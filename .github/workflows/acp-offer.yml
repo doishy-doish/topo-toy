@@ -14,17 +14,16 @@ jobs:
           mkdir -p acp-home-x
           export ACP_CONFIG_DIR=$PWD/acp-home-x
           acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg.json 2>&1; echo "CFG_EXIT=$?"
-          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > /dev/null 2>&1
-          echo "---OFFERING-HELP---"
-          acp offering --help > offering-help.txt 2>&1; head -c 3000 offering-help.txt; echo
-          echo "---BROWSE-HELP---"
-          acp browse --help > browse-help.txt 2>&1; head -c 2000 browse-help.txt; echo
-          echo "---BROWSE-AGENTS---"
-          acp browse --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > browse.json 2>browse.err; echo "EXIT_B=$?"
-          head -c 3000 browse.json; echo; echo "---BERR---"; head -c 800 browse.err; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1; echo "USE_EXIT=$?"
+          cat use.txt; echo
+          echo "---CREATE-HELP---"
+          acp offering create --help > create-help.txt 2>&1; head -c 3000 create-help.txt; echo
           echo "---OFFERING-LIST---"
-          acp offering list --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > offerings.json 2>&1; echo "EXIT_L=$?"
+          acp offering list --json > offerings.json 2>&1; echo "EXIT_L=$?"
           head -c 3000 offerings.json; echo
+          echo "---BROWSE-SCOUT---"
+          acp browse "bounty research scout" --top-k 10 --json > browse.json 2>browse.err; echo "EXIT_B=$?"
+          head -c 4000 browse.json; echo; echo "---BERR---"; head -c 500 browse.err; echo
           echo DONE > done.txt
           exit 0
       - name: commit results
@@ -33,6 +32,6 @@ jobs:
           git config user.name "doishy-doish"
           git config user.email "doishy-doish@users.noreply.github.com"
           git checkout -B acp-offer
-          for f in offering-help.txt browse-help.txt browse.json browse.err offerings.json done.txt; do [ -f "$f" ] && git add -f "$f"; done
-          git commit -m "offering recon" || echo NO_CHANGES
+          for f in cfg.json use.txt create-help.txt offerings.json browse.json browse.err done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "offering recon 2" || echo NO_CHANGES
           git push -f origin acp-offer
