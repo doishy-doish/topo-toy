@@ -1,0 +1,12 @@
+Usage: acp provider [options] [command]
+
+Provider-side commands (set budget, submit deliverable)
+
+Options:
+  -h, --help                              display help for command
+
+Commands:
+  set-budget [options]                    Propose a budget for a job (USDC)
+  set-budget-with-fund-request [options]  Propose a budget and request a fund transfer. The budget (--amount) is your service fee (USDC). The fund transfer (--transfer-amount) is capital the client provides for job execution (e.g., tokens for trades, gas for on-chain ops). These are separate: the budget pays you, the fund transfer gives you working capital.
+  submit [options]                        Submit a deliverable for a job
+  help [command]                          display help for command

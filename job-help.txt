@@ -1,0 +1,15 @@
+Usage: acp job [options] [command]
+
+Job queries and monitoring
+
+Options:
+  -h, --help         display help for command
+
+Commands:
+  list [options]     List active jobs (REST, no socket connection needed)
+  history [options]  Get full job history including status and all messages
+                     (REST, no socket connection needed)
+  watch [options]    Block until the job needs your action, then print the event
+                     and exit. This is a blocking command — use it as a
+                     background process or subagent task.
+  help [command]     display help for command
