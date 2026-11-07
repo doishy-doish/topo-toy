@@ -1,0 +1,57 @@
+name: acp-phase2
+on: [workflow_dispatch]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: acp-home-x, key: acp-keystore-v1 }
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "22f0d11dc767c9dcffa3ba25b0442717" --json > cfg.json 2>&1; echo "EXIT_C=$?"
+          head -c 600 cfg.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1
+          if grep -q "success" use.txt 2>/dev/null; then echo "AUTH=YES" > auth.txt; else echo "AUTH=NO" > auth.txt; acp configure start --json > login.json 2>/dev/null; fi
+          cat auth.txt
+          if grep -q "AUTH=YES" auth.txt; then
+            echo "---KEYSTORE-RESTORED---"
+            find acp-home-x -type f | head -20; echo
+            echo "---SIGNER-STATUS---"
+            acp agent signer-status --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --request-id "db8da30ab2a27fa6e55e2276424e6800" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbBZmzXOaWJZYBFP/rkgOe5C5iRK6mvcT8sU5tYeziD3IEj0mFDw/yDFWVYzh0B63TSfD7AprYSwnF5aZaWHg0g==" --json > signer-done.json 2>&1; echo "EXIT_S=$?"
+            head -c 2000 signer-done.json; echo
+            echo "---SIGNER-POLICY---"
+            acp agent signer-policy --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > signer-policy.json 2>&1; echo "EXIT_P=$?"
+            head -c 1200 signer-policy.json; echo
+            echo "---BROWSE1---"
+            acp browse "security audit" --top-k 10 --json > browse1.json 2>&1; echo "EXIT_B1=$?"
+            head -c 4000 browse1.json; echo
+            echo "---BROWSE2---"
+            acp browse "bounty" --top-k 10 --mode mixed --json > browse2.json 2>&1; echo "EXIT_B2=$?"
+            head -c 4000 browse2.json; echo
+            echo "---PROVIDER-HELP---"
+            acp provider --help > provider-help.txt 2>&1; head -c 2500 provider-help.txt; echo
+            echo "---JOB-HELP---"
+            acp job --help > job-help.txt 2>&1; head -c 2500 job-help.txt; echo
+          fi
+          echo DONE > done.txt
+          exit 0
+      - uses: actions/cache/save@v4
+        if: always()
+        with: { path: acp-home-x, key: acp-keystore-v1 }
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-phase2
+          for f in cfg.json use.txt auth.txt login.json signer-done.json signer-policy.json browse1.json browse2.json provider-help.txt job-help.txt done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "phase2 signer persist plus recon" || echo NO_CHANGES
+          git push -f origin acp-phase2
