@@ -1,0 +1,38 @@
+name: acp-offer
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg.json 2>&1; echo "CFG_EXIT=$?"
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > /dev/null 2>&1
+          echo "---OFFERING-HELP---"
+          acp offering --help > offering-help.txt 2>&1; head -c 3000 offering-help.txt; echo
+          echo "---BROWSE-HELP---"
+          acp browse --help > browse-help.txt 2>&1; head -c 2000 browse-help.txt; echo
+          echo "---BROWSE-AGENTS---"
+          acp browse --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > browse.json 2>browse.err; echo "EXIT_B=$?"
+          head -c 3000 browse.json; echo; echo "---BERR---"; head -c 800 browse.err; echo
+          echo "---OFFERING-LIST---"
+          acp offering list --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --json > offerings.json 2>&1; echo "EXIT_L=$?"
+          head -c 3000 offerings.json; echo
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-offer
+          for f in offering-help.txt browse-help.txt browse.json browse.err offerings.json done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "offering recon" || echo NO_CHANGES
+          git push -f origin acp-offer
