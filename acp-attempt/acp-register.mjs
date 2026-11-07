@@ -35,7 +35,7 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "2c-acpcli-back");
+step("script-version", "2d-provider-log");
 dump({ burner: null });
 
 const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8", npm_config_cache: process.env.HOME + "/.npm" };
@@ -71,12 +71,20 @@ await page.exposeFunction("__acpSignTyped", async (typedJson) => {
   return await burner.signTypedData(t);
 });
 await page.addInitScript(() => {
+  window.__acpCalls = [];
   const acc = () => window.__acpAccounts();
+  const logCall = (method, params) => {
+    try { window.__acpCalls.push(method + " " + JSON.stringify(params || []).slice(0, 160)); } catch (e) {}
+  };
   const prov = {
-    isMetaMask: true, isConnected: () => true, chainId: "0x2105",
+    isMetaMask: true, isConnected: () => true, chainId: "0x2105", selectedAddress: null,
     request: async ({ method, params }) => {
-      if (method === "eth_requestAccounts" || method === "eth_accounts") return acc();
+      logCall(method, params);
+      if (method === "eth_requestAccounts" || method === "eth_accounts") { prov.selectedAddress = (await acc())[0]; return acc(); }
       if (method === "eth_chainId" || method === "net_version") return "0x2105";
+      if (method === "eth_coinbase") return (await acc())[0];
+      if (method === "wallet_requestPermissions" || method === "wallet_getPermissions") return [{ parentCapability: "eth_accounts" }];
+      if (method === "web3_clientVersion") return "MetaMask/v12.0.0";
       if (method === "personal_sign") {
         const [msg] = params;
         return window.__acpPersonalSign(msg);
@@ -86,11 +94,20 @@ await page.addInitScript(() => {
         return window.__acpSignTyped(typeof typed === "string" ? typed : JSON.stringify(typed));
       }
       if (method === "wallet_switchEthereumChain" || method === "wallet_addEthereumChain") return null;
-      throw new Error("unsupported:" + method);
+      if (method === "eth_blockNumber" || method === "eth_gasPrice") return "0x0";
+      throw Object.assign(new Error("unsupported:" + method), { code: 4200 });
     },
-    on() {}, removeListener() {}, emit() {},
+    on() {}, removeListener() {}, emit() {}, send() {}, sendAsync() {},
   };
   window.ethereum = prov;
+  // EIP-6963 announcement for discoverers
+  const announce = () => {
+    window.dispatchEvent(new CustomEvent("eip6963:announceProvider", {
+      detail: Object.freeze({ info: { uuid: "acp-minibrowser", name: "MetaMask", icon: "", rdns: "io.metamask" }, provider: prov }),
+    }));
+  };
+  window.addEventListener("eip6963:requestProvider", announce);
+  announce();
   window.dispatchEvent(new Event("ethereum#initialized"));
 });
 
@@ -138,6 +155,8 @@ try {
   }
   // wait for SIWE signature bridge activity: poll completes via CLI
   await page.waitForTimeout(8000);
+  const calls = await page.evaluate(() => (window.__acpCalls || []).slice(0, 30));
+  step("provider-calls", JSON.stringify(calls));
   await page.screenshot({ path: "acp-shots/2-after-sign.png" });
   const after = await page.evaluate(() => ({ text: document.body.innerText.slice(0, 1000) }));
   step("after-sign", JSON.stringify(after));
