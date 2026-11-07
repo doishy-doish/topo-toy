@@ -1,0 +1,59 @@
+HEAD 011823c
+rustc rustc 1.99.1 (58cf8f9c3 2026-10-13)
+=== env.sh ===
+#!/usr/bin/env bash
+# tools/env.sh — pinned environment for every session (source me).
+# Per SPEC.md §2: pin Go and Rust; do not float. Record changes in PLAN.md Decision Log.
+
+export GO_TARBALL_ROOT="/home/z/tools/go"
+export RUSTUP_HOME="/home/z/.rustup"
+export CARGO_HOME="/home/z/.cargo"
+
+export PATH="/home/z/tools/go/bin:/home/z/.cargo/bin:$PATH"
+
+# Pinned toolchains (verified 2026-10-11, sandbox: 2 CPU / 4 GB RAM / 9.9 GB disk)
+export PINNED_GO="go1.26.9"        # installed at /home/z/tools/go
+export PINNED_RUST="1.99.0"        # via rustup, stable 2026-09-28
+
+# Resource-governor defaults (SPEC.md §2): at most -j2 everywhere
+export CARGO_BUILD_JOBS=2
+export GOFLAGS="-p=2"
+export MAKEFLAGS="-j2"
+export CARGO_TARGET_DIR="/home/z/go-hybrid-target"   # one shared target dir
+export CARGO_PROFILE_DEV_DEBUG=0
+export RUSTFLAGS="-C link-arg=-Wl,--no-keep-memory"  # kinder linking on 4 GB RAM
+
+# Kaggle CLI (venv) — token at ~/.kaggle/access_token (KGAT_..., chmod 600)
+export KAGGLE_CLI="/home/z/.venv/bin/kaggle"
+
+# Heavy-job lock (SPEC.md §2 Resource Governor): wrap builds/tests/benchmarks with
+#   flock /tmp/heavy.lock nice -n10 timeout <secs> <command>
+export HEAVY_LOCK="/tmp/heavy.lock"
+
+# Verify pins quickly: `source tools/env.sh && tools/env.sh --check`
+=== source env.sh + build ===
+after source HYB_PINNED_RUST=
+    2. build with your toolchain AND enforce it deliberately:
+       HYB_PINNED_RUST=1.99.1 cargo build
+       (the binary then enforces 1.99.1; record the change in PLAN.md's
+        environment row + README + tools/env.sh in the same commit)
+    3. upgrade your toolchain to the pin:  rustup install 1.99.0 && rustup default 1.99.0
+
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
+ls: cannot access '/tmp/gohybrid/compiler/target/debug/hyb': No such file or directory
+/home/runner/work/_temp/5c86582b-b019-4785-ba7d-72e32453e5ea.sh: line 13: /tmp/gohybrid/compiler/target/debug/hyb: No such file or directory
+=== B2 check ===
+/home/runner/work/_temp/5c86582b-b019-4785-ba7d-72e32453e5ea.sh: line 28: /tmp/gohybrid/compiler/target/debug/hyb: No such file or directory
+check exit=127
+=== A2 check ===
+/home/runner/work/_temp/5c86582b-b019-4785-ba7d-72e32453e5ea.sh: line 41: /tmp/gohybrid/compiler/target/debug/hyb: No such file or directory
+check exit=127
+=== B2 build ===
+/home/runner/work/_temp/5c86582b-b019-4785-ba7d-72e32453e5ea.sh: line 43: /tmp/gohybrid/compiler/target/debug/hyb: No such file or directory
+build exit=0
+total 16
+drwxr-xr-x  2 runner runner 4096 Nov  7 17:17 .
+drwxrwxrwt 15 root   root   4096 Nov  7 17:17 ..
+-rw-r--r--  1 runner runner  189 Nov  7 17:17 a2.hy
+-rw-r--r--  1 runner runner  174 Nov  7 17:17 b2.hy
