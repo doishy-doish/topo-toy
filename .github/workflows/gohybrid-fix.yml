@@ -29,7 +29,7 @@ jobs:
           set +e
           go version
           cargo build -p hyb > /tmp/hyb-build.log 2>&1; CARGO_EXIT=$?; echo "CARGO_EXIT=$CARGO_EXIT"
-          grep -B2 -A10 '^error' /tmp/hyb-build.log | head -60
+          sed -r 's/\x1b\[[0-9;]*m//g' /tmp/hyb-build.log | grep -B2 -A12 -iE '^error' | head -80
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
           ls -la $BIN
           mkdir -p /tmp/gowork && cd /tmp/gowork && rm -f phantom.hy *.go phantombin build.log
