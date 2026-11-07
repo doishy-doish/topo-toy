@@ -11,7 +11,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: soundness adjacent probes
+      - name: confirm B2 unique
         working-directory: /tmp/gohybrid/compiler
         run: |
           set +e
@@ -19,38 +19,32 @@ jobs:
           use hy_check::check_file;
           fn verdict(src: &str) -> String {
             match hy_syntax::parse_file("probe.hy", src) {
-              Err(e) => format!("ParseErr {:?}", e).chars().take(300).collect(),
+              Err(e) => format!("ParseErr {:?}", e).chars().take(200).collect(),
               Ok(ast) => {
                 let r = check_file(&ast);
-                let codes: Vec<String> = r.diagnostics.iter().map(|d| d.code.clone()).collect();
-                format!("{:?} codes={:?} n={}", r.verdict, codes, r.diagnostics.len())
+                let codes: Vec<String> = r.diagnostics.iter().map(|d| (d.code.clone()+":"+&d.message.chars().take(120).collect::<String>())).collect();
+                format!("{:?} n={} {:?} HEAD_PLACEHOLDER", r.verdict, r.diagnostics.len(), codes)
               }
             }
           }
           #[test]
-          fn sound_adjacent_matrix() {
-            let cases: Vec<(&str, &str)> = vec![
-              ("A2_assoc_generic_low", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    ops.clobber_gen[int](seed, 42)\n}\n"),
-              ("B2_fnvalue_low", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    f := ops.clobber\n    f(seed)\n}\n"),
-              ("G_inferred_assoc_generic", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    ops.clobber_gen(seed, 42)\n}\n"),
-              ("H_inferred_link", "struct holder {\n    m map[string]int\n}\nfn link[t any](h *holder, x map[string]t) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    link(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
-              ("I_nested_if_move_before_exit", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    if true {\n        m := map[string]int{\"k\": 1}\n        if true {\n            defer (fn() {\n                m[\"k\"] = 2\n            })()\n            task worker(move m, done)\n        }\n    }\n    <-done\n}\n"),
-              ("J_closure_after_move_same_block", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    m := map[string]int{\"k\": 1}\n    task worker(move m, done)\n    defer (fn() {\n        m[\"k\"] = 2\n    })()\n    <-done\n}\n"),
-            ];
-            let mut out = String::new();
-            for (name, src) in &cases {
-              let v = verdict(src);
-              eprintln!("CASE {name} {v}");
-              out.push_str(&format!("{name} {v}\n"));
-            }
+          fn confirm_b2() {
+            let head = "HEAD_UNKNOWN";
+            let direct = "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    ops.clobber(seed)\n}\n";
+            let alias = "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    f := ops.clobber\n    f(seed)\n}\n";
+            let vd = verdict(direct);
+            let va = verdict(alias);
+            eprintln!("DIRECT {vd}");
+            eprintln!("ALIAS {va}");
             let ws = std::env::var("GITHUB_WORKSPACE").unwrap_or("/tmp".to_string());
+            let head2 = std::process::Command::new("git").args(["-C","/tmp/gohybrid","rev-parse","HEAD"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or("unknown".into());
+            let out = format!("head={head2}\ndirect {vd}\nalias {va}\n");
             std::fs::write(format!("{ws}/sound_matrix.txt"), &out).ok();
             std::fs::write("/tmp/sound_matrix.txt", &out).ok();
           }
           RS
-          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -30
-          echo "---MATRIX---"
-          cat /tmp/sound_matrix.txt 2>/dev/null || echo "no matrix"
+          sed -i "s/HEAD_PLACEHOLDER//" crates/hy-check/tests/zz_sound_probe.rs || true
+          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -25
           cp /tmp/sound_matrix.txt $GITHUB_WORKSPACE/sound_matrix.txt 2>/dev/null || true
           exit 0
       - name: publish matrix
@@ -58,5 +52,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "sound matrix v3" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "confirm b2" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
