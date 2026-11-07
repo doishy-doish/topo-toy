@@ -34,6 +34,7 @@ jobs:
           ls -la /tmp/gohybrid/compiler/target/debug/hyb
       - name: phantom matrix duration values header mux transport
         run: |
+          export HYB_ALLOW_TOOLCHAIN_DRIFT=1
           set +e
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
           rm -rf /tmp/gowork && mkdir -p /tmp/gowork && cd /tmp/gowork
