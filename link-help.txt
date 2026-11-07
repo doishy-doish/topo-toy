@@ -1,0 +1,14 @@
+Usage: acp agent link [options]
+
+Link an existing local signer keypair to an agent that was provisioned
+externally (e.g. by a partner backend).
+
+Options:
+  --agent-id <id>            Agent ID returned by the partner
+  --wallet <address>         Agent's wallet address returned by the partner
+  --signer-public-key <key>  Public key previously emitted by `acp agent
+                             generate-signer-key`
+  --wallet-id <id>           Privy wallet ID (optional)
+  --make-active              Also set this agent as the currently active one
+                             (default: false)
+  -h, --help                 display help for command

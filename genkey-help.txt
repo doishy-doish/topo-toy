@@ -1,0 +1,7 @@
+Usage: acp agent generate-signer-key [options]
+
+Generate a P-256 signer keypair locally. The private key stays in the keystore;
+the public key is printed for partner-side agent provisioning.
+
+Options:
+  -h, --help  display help for command
