@@ -1,0 +1,17 @@
+name: acp-recon3
+on: { workflow_dispatch: null }
+permissions: { contents: read }
+jobs:
+  r:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > /dev/null 2>&1
+          echo "---USE-HELP---"; acp agent use --help 2>&1 | head -20
+          echo "---ADDSIGNER-HELP---"; acp agent add-signer --help 2>&1 | head -50
+          echo "---OFFERING-LIST---"; acp offering --help 2>&1 | head -40
+          echo "---BROWSE-TOP---"; acp browse --top-k 5 --json 2>&1 | head -c 2500; echo
