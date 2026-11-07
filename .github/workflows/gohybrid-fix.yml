@@ -28,7 +28,7 @@ jobs:
           export HYB_ALLOW_TOOLCHAIN_DRIFT=1
           set +e
           go version
-          cargo build -p hyb > /tmp/hyb-build.log 2>&1; CARGO_EXIT=$?; echo "CARGO_EXIT=$CARGO_EXIT"
+          HYB_PINNED_RUST=$(rustc --version | awk '{print $2}') cargo build -p hyb > /tmp/hyb-build.log 2>&1; CARGO_EXIT=$?; echo "CARGO_EXIT=$CARGO_EXIT"
           sed -r 's/\x1b\[[0-9;]*m//g' /tmp/hyb-build.log | grep -B2 -A12 -iE '^error' | head -80
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
           ls -la $BIN
@@ -57,7 +57,7 @@ jobs:
         working-directory: /tmp/gohybrid/compiler
         run: |
           export HYB_ALLOW_TOOLCHAIN_DRIFT=1
-          cargo build -p hyb 2>&1 | tail -1
+          HYB_PINNED_RUST=$(rustc --version | awk '{print $2}') cargo build -p hyb 2>&1 | tail -1
           BIN=/tmp/gohybrid/compiler/target/debug/hyb
           cd /tmp/gowork
           $BIN check phantom.hy > check2.log 2>&1; CHECK2_EXIT=$?
