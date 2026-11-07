@@ -56,23 +56,33 @@ step("parsed", JSON.stringify({ host: url ? new URL(url).host : null, hasReq: !!
 if (url) {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on("console", (m) => step("page-console", m.type() + " " + m.text().slice(0, 300)));
+  page.on("requestfailed", (r) => step("req-fail", r.url().slice(0, 160) + " :: " + ((r.failure() || {}).errorText || "")));
+  page.on("response", (r) => { if (r.status() >= 400) step("http-" + r.status(), r.url().slice(0, 160)); });
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
-    await page.waitForTimeout(4000);
-    await page.screenshot({ path: "acp-shots/login.png" });
-    const info = await page.evaluate(() => ({
-      url: location.href,
-      title: document.title,
-      buttons: [...document.querySelectorAll("button")]
-        .map((b) => b.innerText.trim())
-        .filter(Boolean)
-        .slice(0, 30),
-      inputs: [...document.querySelectorAll("input")]
-        .map((i) => i.placeholder || i.type || i.name)
-        .slice(0, 20),
-      text: document.body.innerText.slice(0, 2000),
-    }));
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(5000);
+    await page.screenshot({ path: "acp-shots/login-early.png" });
+    // wait up to 40s for the app to render anything actionable
+    let info = null;
+    for (let i = 0; i < 20; i++) {
+      info = await page.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        buttons: [...document.querySelectorAll("button")]
+          .map((b) => b.innerText.trim())
+          .filter(Boolean)
+          .slice(0, 30),
+        inputs: [...document.querySelectorAll("input")]
+          .map((i) => i.placeholder || i.type || i.name)
+          .slice(0, 20),
+        text: document.body.innerText.slice(0, 2000),
+      }));
+      if (info.buttons.length || info.inputs.length || info.text.trim().length > 50) break;
+      await page.waitForTimeout(2000);
+    }
     step("login-page", JSON.stringify(info));
+    await page.screenshot({ path: "acp-shots/login.png" });
     await page.screenshot({ path: "acp-shots/login-full.png", fullPage: true });
   } catch (e) {
     step("browser-fail", String(e).slice(0, 1000));
