@@ -35,7 +35,7 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "2d-provider-log");
+step("script-version", "2e-bridge-log");
 dump({ burner: null });
 
 const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8", npm_config_cache: process.env.HOME + "/.npm" };
@@ -63,8 +63,15 @@ page.on("response", (r) => { if (r.status() >= 400) step("http-" + r.status(), r
 
 // bridge: dapp -> node signer (burner). personal_sign + typed-data.
 await page.exposeFunction("__acpAccounts", () => [burner.address]);
-await page.exposeFunction("__acpPersonalSign", async (hexMsg) => {
-  return await burner.signMessage({ message: hexMsg });
+await page.exposeFunction("__acpPersonalSign", async (p0, p1) => {
+  try {
+    const cand = [p0, p1].filter((x) => typeof x === "string");
+    const hexMsg = cand.find((x) => x.startsWith("0x") && x.length > 42) || cand[0];
+    step("bridge-sign", "signing msg len=" + (hexMsg ? hexMsg.length : -1) + " head=" + String(hexMsg).slice(0, 30));
+    const sig = await burner.signMessage({ message: hexMsg });
+    step("bridge-sign-ok", "sig=" + sig.slice(0, 20) + "...");
+    return sig;
+  } catch (e) { step("bridge-sign-err", String(e).slice(0, 300)); throw e; }
 });
 await page.exposeFunction("__acpSignTyped", async (typedJson) => {
   const t = JSON.parse(typedJson);
@@ -86,8 +93,7 @@ await page.addInitScript(() => {
       if (method === "wallet_requestPermissions" || method === "wallet_getPermissions") return [{ parentCapability: "eth_accounts" }];
       if (method === "web3_clientVersion") return "MetaMask/v12.0.0";
       if (method === "personal_sign") {
-        const [msg] = params;
-        return window.__acpPersonalSign(msg);
+        return window.__acpPersonalSign(params[0], params[1]);
       }
       if (method === "eth_signTypedData_v4" || method === "eth_signTypedData_v3" || method === "eth_signTypedData") {
         const [addr, typed] = params;
