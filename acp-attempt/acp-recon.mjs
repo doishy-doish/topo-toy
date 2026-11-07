@@ -38,6 +38,19 @@ const skill = run("acp", ["skill", "print"]);
 step("skill-print", skill.out.slice(0, 3000));
 
 const env = { IS_TESTNET: "true", ACP_CONFIG_DIR: process.cwd() + "/acp-home" };
+const envMain = { ACP_CONFIG_DIR: process.cwd() + "/acp-home" };
+const sMain = run("acp", ["configure", "start", "--json"], envMain);
+step("configure-start-mainnet", JSON.stringify(sMain));
+let urlMain = null;
+try {
+  const m = sMain.out.match(/\{[\s\S]*\}/);
+  const j = JSON.parse(m ? m[0] : "{}");
+  urlMain = j.url || null;
+} catch (e) { step("parse-main-fail", String(e).slice(0, 200)); }
+step("parsed-main", JSON.stringify({ host: urlMain ? new URL(urlMain).host : null }));
+if (urlMain) {
+  step("curl-main", JSON.stringify(run("curl", ["-sS", "-D", "-", "-o", "/dev/null", "-w", "HTTP:%{http_code} time:%{time_total}s ip:%{remote_ip}", "--max-time", 30, urlMain])));
+}
 const s = run("acp", ["configure", "start", "--json"], env);
 step("configure-start", JSON.stringify(s));
 
@@ -52,6 +65,9 @@ try {
   step("parse-fail", String(e).slice(0, 300));
 }
 step("parsed", JSON.stringify({ host: url ? new URL(url).host : null, hasReq: !!requestId }));
+if (url) {
+  step("curl-testnet", JSON.stringify(run("curl", ["-sS", "-D", "-", "-o", "/dev/null", "-w", "HTTP:%{http_code} time:%{time_total}s", "--max-time", 30, url])));
+}
 
 if (url) {
   const browser = await chromium.launch();
