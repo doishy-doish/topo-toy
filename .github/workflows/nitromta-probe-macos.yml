@@ -1,0 +1,13 @@
+name: nitromta-probe-macos
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: macos-latest
+    steps:
+      - name: Brew install NitroMTA (no claim)
+        run: |
+          set -e
+          brew install nitrosend/tap/nitromta
+          nitromta --version
+          echo "BREW_PROBE_DONE"
