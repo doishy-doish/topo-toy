@@ -33,15 +33,16 @@ jobs:
           echo "---ADD-SIGNER---"
           acp agent add-signer --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --policy restricted --no-wait --json > mega.json 2>mega.err; echo "EXIT_S=$?"
           cat mega.json; echo
-          python3 -c "import json;print(json.load(open("mega.json"))["signerUrl"])" > mega-url.txt 2>/dev/null || echo URLPARSE_FAIL > mega-url.txt
+          node -e 'console.log(JSON.parse(require("fs").readFileSync("mega.json","utf8")).signerUrl)' > mega-url.txt 2>/dev/null || echo URLPARSE_FAIL > mega-url.txt
           cat mega-url.txt
           git checkout -B acp-mega
           git add -f mega.json mega-url.txt cfg.json auth.txt
           git commit -m "awaiting approval" || true
           git push -f origin acp-mega
           echo "---POLL-SIGNER-STATUS---"
-          SREQ=$(python3 -c "import json;print(json.load(open("mega.json"))["requestId"])")
-          SPUB=$(python3 -c "import json;print(json.load(open("mega.json"))["publicKey"])")
+          SREQ=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("mega.json","utf8")).requestId)')
+          SPUB=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("mega.json","utf8")).publicKey)')
+          echo "SREQ=$SREQ"
           touch MARKER
           for i in $(seq 1 16); do
             sleep 15
