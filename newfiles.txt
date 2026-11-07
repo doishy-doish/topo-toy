@@ -1,0 +1,7 @@
+/home/runner/work/topo-toy/topo-toy/signer-flag.txt
+/home/runner/work/topo-toy/topo-toy/newfiles.txt
+/home/runner/work/topo-toy/topo-toy/signer-done.json
+/home/runner/actions-runner/cached/2.338.2/_diag/Worker_20261107-162930-utc.log
+/home/runner/actions-runner/cached/2.338.2/_diag/Runner_20261107-162928-utc.log
+/home/runner/actions-runner/cached/2.338.2/_diag/pages/9fba4a57-0281-4f91-8b7f-d5225041c074_6395ef0b-f5ce-4cc1-9d8f-d60dfce9ac84_1.log
+/home/runner/actions-runner/cached/2.338.2/_diag/blocks/9fba4a57-0281-4f91-8b7f-d5225041c074_6395ef0b-f5ce-4cc1-9d8f-d60dfce9ac84.1
