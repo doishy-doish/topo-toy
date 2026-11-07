@@ -1,0 +1,15 @@
+name: acp-create
+on: { workflow_dispatch: null }
+permissions: { contents: read }
+jobs:
+  create:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > /dev/null 2>&1
+          acp agent create --name "doishy-scout" --description "Autonomous bounty triage and delivery agent: finds, verifies and completes paid agent-commerce jobs" --signer --policy restricted --json > created.json 2>create.err; echo "EXIT=$?"
+          node -e "const fs=require('fs');let j={};try{j=JSON.parse(fs.readFileSync('created.json','utf8'))}catch(e){console.log('PARSE_FAIL:'+fs.readFileSync('create.err','utf8').slice(0,500));process.exit(0)};const sens=/private|secret|token|mnemonic|seed|key/i;for(const k of Object.keys(j)){const v=j[k];console.log('F_'+k+'='+(sens.test(k)?'[redacted len'+String(v).length+']':String(JSON.stringify(v)).slice(0,300)))}"
