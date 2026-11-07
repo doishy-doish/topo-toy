@@ -1,0 +1,24 @@
+name: acp-minibrowser
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  recon:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq dbus-x11
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: dbus-run-session -- node acp-attempt/acp-recon.mjs
+        env: { IS_TESTNET: "true" }
+      - run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-minibrowser
+          git add -f acp-shots acp-attempt-out || true
+          git commit -m "acp recon $(date -u +%FT%TZ)" || echo NO_CHANGES
+          git push -f origin acp-minibrowser
