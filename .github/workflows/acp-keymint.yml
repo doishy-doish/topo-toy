@@ -1,0 +1,48 @@
+name: acp-keymint
+on: [workflow_dispatch]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: acp-home-x, key: acp-keystore-v1 }
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "22f0d11dc767c9dcffa3ba25b0442717" --json > cfg.json 2>&1; echo "EXIT_C=$?"
+          head -c 600 cfg.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1
+          if grep -q "success" use.txt 2>/dev/null; then
+            echo "AUTH=YES" > auth.txt
+            echo "---ADD-SIGNER---"
+            acp agent add-signer --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --policy restricted --no-wait --json > fresh.json 2>fresh.err; echo "EXIT_S=$?"
+            head -c 2000 fresh.json; echo
+            echo "---KEYSTORE---"
+            find acp-home-x -type f | head -20
+          else
+            echo "AUTH=NO" > auth.txt
+            echo "---FRESH-LOGIN---"
+            acp configure start --json > login.json 2>login.err; echo "EXIT_L=$?"
+            head -c 2000 login.json; echo
+          fi
+          echo DONE > done.txt
+          exit 0
+      - uses: actions/cache/save@v4
+        if: always()
+        with: { path: acp-home-x, key: acp-keystore-v1 }
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-keymint
+          for f in cfg.json use.txt auth.txt fresh.json fresh.err login.json login.err done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "keymint" || echo NO_CHANGES
+          git push -f origin acp-keymint
