@@ -35,12 +35,13 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "2b-crashproof");
+step("script-version", "2c-acpcli-back");
 dump({ burner: null });
 
 const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8", npm_config_cache: process.env.HOME + "/.npm" };
 const envMain = { ...cleanBase, ACP_CONFIG_DIR: process.cwd() + "/acp-home-main" };
 
+step("install-acp-cli", JSON.stringify(run("npm", ["i", "-g", "@virtuals-protocol/acp-cli", "--no-audit", "--no-fund"])));
 step("install-deps", JSON.stringify(run("npm", ["i", "--no-audit", "--no-fund", "viem"], { ...cleanBase, npm_config_cache: process.env.HOME + "/.npm" }, true)));
 const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
 const burnerPk = generatePrivateKey();
@@ -54,7 +55,7 @@ try {
   urlMain = j.url || null; requestIdMain = j.requestId || null;
 } catch (e) { step("parse-main-fail", String(e).slice(0, 200)); }
 step("parsed-main", JSON.stringify({ host: urlMain ? new URL(urlMain).host : null, hasReq: !!requestIdMain }));
-if (!urlMain) { step("fatal", "no auth url"); process.exit(2); }
+if (!urlMain) { step("fatal", "no auth url: " + JSON.stringify(sMain).slice(0, 300)); dump(); process.exit(2); }
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -63,8 +64,7 @@ page.on("response", (r) => { if (r.status() >= 400) step("http-" + r.status(), r
 // bridge: dapp -> node signer (burner). personal_sign + typed-data.
 await page.exposeFunction("__acpAccounts", () => [burner.address]);
 await page.exposeFunction("__acpPersonalSign", async (hexMsg) => {
-  const { Hex } = await import("viem");
-  return await burner.signMessage({ message: { raw: Hex } });
+  return await burner.signMessage({ message: hexMsg });
 });
 await page.exposeFunction("__acpSignTyped", async (typedJson) => {
   const t = JSON.parse(typedJson);
