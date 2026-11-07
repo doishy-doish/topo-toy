@@ -1,0 +1,58 @@
+name: gohybrid-sound-validate
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.13'
+      - name: clone Go-Hybrid main
+        run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
+      - name: build hyb
+        working-directory: /tmp/gohybrid/compiler
+        run: cargo build -p hyb
+      - name: validate B2 and A2
+        run: |
+          set +e
+          HYB=/tmp/gohybrid/compiler/target/debug/hyb
+          mkdir -p /tmp/v
+          cat > /tmp/v/b2.hy <<'HY'
+          const seed = map[string]int{"a": 1}
+          struct ops {}
+          fn ops.clobber(m map[string]int) {
+              m["a"] = 99
+          }
+          fn main() {
+              f := ops.clobber
+              f(seed)
+              fmt.println("{seed}")
+          }
+          HY
+          echo "=== B2 check ==="
+          $HYB check /tmp/v/b2.hy; echo "check exit=$?"
+          echo "=== B2 build ==="
+          $HYB build /tmp/v/b2.hy -o /tmp/v/b2.go 2>&1 || $HYB build /tmp/v/b2.hy 2>&1; echo "build exit=$?"
+          ls -la /tmp/v/ || true
+          find /tmp -maxdepth 3 -name "b2.go" -o -maxdepth 3 -name "*.go" | head -20
+          echo "=== A2 check ==="
+          cat > /tmp/v/a2.hy <<'HY'
+          const seed = map[string]int{"a": 1}
+          struct ops {}
+          fn ops.clobber_gen[t any](m map[string]t, v t) {
+              m["a"] = v
+          }
+          fn main() {
+              ops.clobber_gen[int](seed, 42)
+              fmt.println("{seed}")
+          }
+          HY
+          $HYB check /tmp/v/a2.hy; echo "check exit=$?"
+          echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD)"
+          echo "---DONE---"
+          exit 0
