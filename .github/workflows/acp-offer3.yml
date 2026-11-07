@@ -1,0 +1,47 @@
+name: acp-offer3
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          echo "---COMPLETE---"
+          acp configure complete --request-id "22f0d11dc767c9dcffa3ba25b0442717" --json > cfg.json 2>&1; echo "EXIT_C=$?"
+          head -c 1200 cfg.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1; echo "USE=$?"
+          head -c 600 use.txt; echo
+          if grep -q "success" use.txt 2>/dev/null; then echo "AUTH=YES" > auth.txt; else echo "AUTH=NO" > auth.txt; fi
+          cat auth.txt
+          if grep -q "AUTH=YES" auth.txt; then
+            echo "---OFFERING-CREATE---"
+            acp offering create --name "Bounty Triage Scout" --description "Same-day triage of bug-bounty leads for EVM and Solana repos: validity scoring, duplicate check, and a fix-plan sketch, delivered as a structured report." --price-type fixed --price-value 10 --sla-minutes 1440 --requirements "Repo URL and bounty brief" --deliverable "Triage report (JSON plus markdown)" --required-funds --no-hidden --json > offering-created.json 2>offering-created.err; echo "EXIT_CREATE=$?"
+            head -c 3000 offering-created.json; echo; echo "---CERR---"; head -c 800 offering-created.err; echo
+            echo "---OFFERING-LIST---"
+            acp offering list --json > offerings.json 2>&1; echo "EXIT_L=$?"
+            head -c 4000 offerings.json; echo
+            echo "---BROWSE1---"
+            acp browse "security audit" --top-k 10 --json > browse1.json 2>browse1.err; echo "EXIT_B1=$?"
+            head -c 4000 browse1.json; echo
+            echo "---BROWSE2---"
+            acp browse "bounty" --top-k 10 --mode mixed --json > browse2.json 2>browse2.err; echo "EXIT_B2=$?"
+            head -c 4000 browse2.json; echo
+          fi
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-offer3
+          for f in cfg.json use.txt auth.txt offering-created.json offering-created.err offerings.json browse1.json browse1.err browse2.json browse2.err done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "auth plus offering" || echo NO_CHANGES
+          git push -f origin acp-offer3
