@@ -11,7 +11,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: nonowned method
+      - name: width via method
         working-directory: /tmp/gohybrid/compiler
         run: |
           set +e
@@ -28,9 +28,9 @@ jobs:
             }
           }
           #[test]
-          fn nonowned() {
-            let a = "struct holder {\n    m map[string]int\n}\nfn worker(h holder, done chan int) {\n    done <- 1\n}\nfn passthrough(h holder, done chan int) {\n    task worker(move h, done)\n}\nfn main() {\n    var h holder\n    done := make(chan int, 1)\n    passthrough(move h, done)\n    <-done\n}\n";
-            let b = "struct holder {\n    m map[string]int\n}\nstruct ops {}\nfn worker(h holder, done chan int) {\n    done <- 1\n}\nfn (o ops) passthrough(h holder, done chan int) {\n    task worker(move h, done)\n}\nfn main() {\n    var h holder\n    var o ops\n    done := make(chan int, 1)\n    o.passthrough(move h, done)\n    <-done\n}\n";
+          fn width() {
+            let a = "fn take(x float64) {\n    fmt.println(\"{x}\")\n}\nfn main() {\n    var i int\n    i = 1\n    take(i)\n}\n";
+            let b = "struct ops {}\nfn (o ops) take(x float64) {\n    fmt.println(\"{x}\")\n}\nfn main() {\n    var o ops\n    var i int\n    i = 1\n    o.take(i)\n}\n";
             let va = verdict(a);
             let vb = verdict(b);
             eprintln!("FREE {va}");
@@ -50,5 +50,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "nonowned" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "width" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
