@@ -11,7 +11,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: closure const
+      - name: reconfirm 4073
         working-directory: /tmp/gohybrid/compiler
         run: |
           set +e
@@ -28,16 +28,16 @@ jobs:
             }
           }
           #[test]
-          fn closure() {
+          fn reconfirm() {
             let a = "const seed = map[string]int{\"a\": 1}\nfn clobber(m map[string]int) {\n    m[\"a\"] = 9\n}\nfn main() {\n    clobber(seed)\n}\n";
-            let b = "const seed = map[string]int{\"a\": 1}\nfn main() {\n    f := fn(m map[string]int) {\n        m[\"a\"] = 9\n    }\n    f(seed)\n}\n";
+            let b = "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn (o ops) clobber(m map[string]int) {\n    m[\"a\"] = 9\n}\nfn main() {\n    var o ops\n    o.clobber(seed)\n}\n";
             let va = verdict(a);
             let vb = verdict(b);
             eprintln!("FREE {va}");
-            eprintln!("CLOSURE {vb}");
+            eprintln!("METHOD {vb}");
             let ws = std::env::var("GITHUB_WORKSPACE").unwrap_or("/tmp".to_string());
             let head2 = std::process::Command::new("git").args(["-C","/tmp/gohybrid","rev-parse","HEAD"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or("unknown".into());
-            let out2 = format!("head={head2}\nfree {va}\nclosure {vb}\n");
+            let out2 = format!("head={head2}\nfree {va}\nmethod {vb}\n");
             std::fs::write(format!("{ws}/sound_matrix.txt"), &out2).ok();
             std::fs::write("/tmp/sound_matrix.txt", &out2).ok();
           }
@@ -50,5 +50,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "closure" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "reconfirm" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
