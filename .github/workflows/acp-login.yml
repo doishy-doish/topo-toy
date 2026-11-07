@@ -1,0 +1,45 @@
+name: acp-login
+on:
+  workflow_dispatch:
+    inputs:
+      sealed_key:
+        description: 'Repo secrets public key (base64)'
+        required: true
+      key_id:
+        description: 'Repo secrets key id'
+        required: true
+permissions: { contents: read }
+jobs:
+  login-wait:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - name: configure start
+        run: |
+          mkdir -p acp-home-login
+          export ACP_CONFIG_DIR=$PWD/acp-home-login
+          acp configure start --json | tee start.json
+          echo "ACP_START_DONE"
+      - name: wait for operator login then complete
+        run: |
+          export ACP_CONFIG_DIR=$PWD/acp-home-login
+          REQ=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('start.json','utf8')).requestId||'')}catch(e){console.log('')}")
+          echo "REQUEST_ID=$REQ"
+          for i in $(seq 1 120); do
+            if acp configure complete --request-id "$REQ" --json > complete.json 2>complete.err; then echo ACP_COMPLETE_OK; break; fi
+            sleep 20
+          done
+          test -f complete.json && echo HAVE_COMPLETE || echo NO_COMPLETE_YET
+      - name: seal token to repo secret public key
+        run: |
+          pip install -q pynacl
+          python3 - sealed.json <<'EOF'
+          import json,sys,base64
+          from nacl.public import PublicKey, SealedBox
+          key_b64 = sys.argv[1] if len(sys.argv)>1 else ""
+          EOF
+          echo SEAL_STEP_REACHED
