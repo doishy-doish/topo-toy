@@ -1,0 +1,21 @@
+name: acp-probe2
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 'requestId'
+        required: true
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "${{ inputs.request_id }}" --json > complete.json 2>complete.err; echo "EXIT=$?"
+          node -e "const fs=require('fs');let j={};try{j=JSON.parse(fs.readFileSync('complete.json','utf8'))}catch(e){console.log('PARSE_FAIL');process.exit(0)};console.log('KEYS='+Object.keys(j).join(','));console.log('STATUS='+j.status)"
+          echo "---DIR---"; find acp-home-x -type f | head -20
+          echo "---HELP-AGENT---"; acp agent --help 2>&1 | head -40
