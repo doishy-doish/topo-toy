@@ -14,13 +14,19 @@ jobs:
           go-version: '1.24.13'
       - name: clone Go-Hybrid main
         run: git clone --depth 1 https://github.com/limitlessprojects/Go-Hybrid /tmp/gohybrid
-      - name: build hyb
-        working-directory: /tmp/gohybrid/compiler
-        run: cargo build -p hyb
       - name: validate B2 and A2
         run: |
           set +e
+          {
+          echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD) $(git -C /tmp/gohybrid rev-parse HEAD)"
+          echo "=== cargo build hyb ==="
+          cargo build -p hyb --manifest-path /tmp/gohybrid/compiler/Cargo.toml 2>&1 | tail -5
+          echo "build exit=$?"
           HYB=/tmp/gohybrid/compiler/target/debug/hyb
+          ls -la $HYB 2>&1
+          echo "=== hyb help ==="
+          $HYB --help 2>&1 | head -40
+          $HYB check --help 2>&1 | head -40
           mkdir -p /tmp/v
           cat > /tmp/v/b2.hy <<'HY'
           const seed = map[string]int{"a": 1}
@@ -31,28 +37,22 @@ jobs:
           fn main() {
               f := ops.clobber
               f(seed)
-              fmt.println("{seed}")
+              fmt.println("done")
           }
           HY
           echo "=== B2 check ==="
-          $HYB check /tmp/v/b2.hy; echo "check exit=$?"
-          echo "=== B2 build ==="
-          $HYB build /tmp/v/b2.hy -o /tmp/v/b2.go 2>&1 || $HYB build /tmp/v/b2.hy 2>&1; echo "build exit=$?"
-          ls -la /tmp/v/ || true
-          find /tmp -maxdepth 3 -name "b2.go" -o -maxdepth 3 -name "*.go" | head -20
-          echo "=== A2 check ==="
-          cat > /tmp/v/a2.hy <<'HY'
-          const seed = map[string]int{"a": 1}
-          struct ops {}
-          fn ops.clobber_gen[t any](m map[string]t, v t) {
-              m["a"] = v
-          }
-          fn main() {
-              ops.clobber_gen[int](seed, 42)
-              fmt.println("{seed}")
-          }
-          HY
-          $HYB check /tmp/v/a2.hy; echo "check exit=$?"
-          echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD)"
-          echo "---DONE---"
+          $HYB check /tmp/v/b2.hy 2>&1; echo "check exit=$?"
+          echo "=== B2 build help ==="
+          $HYB build --help 2>&1 | head -20
+          } > $GITHUB_WORKSPACE/validate_out.txt 2>&1
+          cat $GITHUB_WORKSPACE/validate_out.txt | tail -60
+          exit 0
+      - name: publish output
+        if: always()
+        run: |
+          set +e
+          git checkout -B gohybrid-validate-out
+          git add validate_out.txt || true
+          git -c user.name=probe -c user.email=probe@local commit -m "validate out" || true
+          git push -u origin gohybrid-validate-out --force
           exit 0
