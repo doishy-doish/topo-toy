@@ -35,7 +35,7 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "2e-bridge-log");
+step("script-version", "2f-local-verify");
 dump({ burner: null });
 
 const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8", npm_config_cache: process.env.HOME + "/.npm" };
@@ -70,6 +70,13 @@ await page.exposeFunction("__acpPersonalSign", async (p0, p1) => {
     step("bridge-sign", "signing msg len=" + (hexMsg ? hexMsg.length : -1) + " head=" + String(hexMsg).slice(0, 30));
     const sig = await burner.signMessage({ message: hexMsg });
     step("bridge-sign-ok", "sig=" + sig.slice(0, 20) + "...");
+    try {
+      const { verifyMessage } = await import("viem");
+      const okLocal = await verifyMessage({ address: burner.address, message: hexMsg, signature: sig });
+      step("bridge-local-verify", "local-ecrecover-match=" + okLocal);
+      const raw = Buffer.from(String(hexMsg).replace(/^0x/, ""), "hex").toString("utf8");
+      step("bridge-siwe-text", raw.slice(0, 600));
+    } catch (e) { step("bridge-verify-err", String(e).slice(0, 300)); }
     return sig;
   } catch (e) { step("bridge-sign-err", String(e).slice(0, 300)); throw e; }
 });
