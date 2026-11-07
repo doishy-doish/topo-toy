@@ -13,6 +13,14 @@ const step = (k, v) => {
   steps.push({ t: new Date().toISOString(), k, v: s.slice(0, 2000) });
   console.log("##", k, s.slice(0, 500));
 };
+const dump = (extra = {}) => {
+  try {
+    fs.mkdirSync("acp-attempt-out", { recursive: true });
+    fs.writeFileSync("acp-attempt-out/result.json", JSON.stringify({ testnet: false, ...extra, steps }, null, 2));
+  } catch (e) { console.log("DUMP-FAIL", String(e).slice(0, 200)); }
+};
+process.on("uncaughtException", (e) => { step("uncaught", String((e && e.stack) || e).slice(0, 1000)); dump(); process.exit(3); });
+process.on("unhandledRejection", (e) => { step("unhandled", String((e && e.stack) || e).slice(0, 1000)); dump(); process.exit(3); });
 const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
   try {
     const o = execFileSync(cmd, args, {
@@ -27,7 +35,8 @@ const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "2a-wallet-siwe");
+step("script-version", "2b-crashproof");
+dump({ burner: null });
 
 const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8", npm_config_cache: process.env.HOME + "/.npm" };
 const envMain = { ...cleanBase, ACP_CONFIG_DIR: process.cwd() + "/acp-home-main" };
