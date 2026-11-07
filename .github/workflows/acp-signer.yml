@@ -1,0 +1,18 @@
+name: acp-signer
+on: { workflow_dispatch: null }
+permissions: { contents: read }
+jobs:
+  r:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > /dev/null 2>&1
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" 2>&1 | head -5
+          echo "---ADDSIGNER---"
+          acp agent add-signer --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --policy restricted --no-wait --json > signer.json 2>signer.err; echo "EXIT=$?"
+          node -e "const fs=require('fs');try{const j=JSON.parse(fs.readFileSync('signer.json','utf8'));for(const k of Object.keys(j))console.log('S_'+k+'='+String(j[k]).slice(0,300))}catch(e){console.log('SIGNER_FAIL:'+fs.readFileSync('signer.err','utf8').slice(0,500))}"
+          echo "---SIGNER-STATUS---"; acp agent signer-status --request-id "none" --json 2>&1 | head -c 500; echo
