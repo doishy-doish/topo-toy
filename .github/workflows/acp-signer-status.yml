@@ -1,0 +1,39 @@
+name: acp-signer-status
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg.json 2>&1; echo "CFG_EXIT=$?"
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" 2>&1 | head -5
+          echo "---AGENT-HELP---"
+          acp agent --help 2>&1 | head -40
+          echo "---STATUS-499c---"
+          acp agent signer-status --request-id "499c3fae9576a7020762796b10978842" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3007ADjMhRG19CDRnozGE5lH0SFH6XtA5QeID3Q/g1QA89Yu4OtnU+ur0ZwG/4kWUctr73fKOvlKlTQy25/Utg==" --json > signer-status.json 2>signer-status.err; echo "EXIT1=$?"
+          head -c 2000 signer-status.json; echo
+          head -c 500 signer-status.err; echo
+          echo "---STATUS-e054---"
+          acp agent signer-status --request-id "e0542728cfbdec37b004a340f044a3e0" --public-key "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEasev2pxgpqmfH5I6hQhZIVzuQph7I6QSBJ5duxaHeFD6dU/5F8YTh+Syc5V75w03T96WDm+AOac+L35Xw+Yy/A==" --json > signer-status2.json 2>signer-status2.err; echo "EXIT2=$?"
+          head -c 2000 signer-status2.json; echo
+          head -c 500 signer-status2.err; echo
+          echo "---FRESH-ADDSIGNER---"
+          acp agent add-signer --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" --policy restricted --no-wait --json > signer-fresh.json 2>signer-fresh.err; echo "EXIT3=$?"
+          head -c 2000 signer-fresh.json; echo
+          head -c 500 signer-fresh.err; echo
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-signer-status
+          git add -f signer-status.json signer-status.err signer-status2.json signer-status2.err signer-fresh.json signer-fresh.err || true
+          git commit -m "signer-status check" || echo NO_CHANGES
+          git push -f origin acp-signer-status
