@@ -30,12 +30,12 @@ jobs:
           #[test]
           fn sound_adjacent_matrix() {
             let cases: Vec<(&str, &str)> = vec![
-              ("A_generic_assoc", "const SEED = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    ops.clobber_gen[int](SEED, 42)\n}\n"),
-              ("B_fnvalue_alias", "const SEED = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    f := ops.clobber\n    f(SEED)\n}\n"),
-              ("C_explicit_wrap", "struct t {\n    n int\n}\nstruct box_val[t any] {\n    v t\n}\nfn wrap[t any](x t) box_val[t] {\n    return box_val[t]{v: x}\n}\nfn worker(b box_val[map[string]int], done chan int) {\n    b.v[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    b := wrap[map[string]int](m)\n    done := make(chan int, 1)\n    task worker(move b, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
-              ("D_for_defer_move", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    m := map[string]int{\"k\": 1}\n    for i in 0..2 {\n        defer (fn() {\n            m[\"k\"] = 2\n        })()\n    }\n    task worker(move m, done)\n    <-done\n}\n"),
-              ("E_match_closure_move", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    m := map[string]int{\"k\": 1}\n    x := 1\n    match x {\n        some(v) => { defer (fn() { m[\"k\"] = 2 })() }\n        none => { fmt.println(\"none\") }\n    }\n    task worker(move m, done)\n    <-done\n}\n"),
-              ("F_generic_fnvalue", "struct holder {\n    m map[string]int\n}\nfn link[t any](h *holder, x map[string]t) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    f := link[int]\n    f(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
+              ("A2_assoc_generic_low", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    ops.clobber_gen[int](seed, 42)\n}\n"),
+              ("B2_fnvalue_low", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber(m map[string]int) {\n    m[\"a\"] = 99\n}\nfn main() {\n    f := ops.clobber\n    f(seed)\n}\n"),
+              ("G_inferred_assoc_generic", "const seed = map[string]int{\"a\": 1}\nstruct ops {}\nfn ops.clobber_gen[t any](m map[string]t, v t) {\n    m[\"a\"] = v\n}\nfn main() {\n    ops.clobber_gen(seed, 42)\n}\n"),
+              ("H_inferred_link", "struct holder {\n    m map[string]int\n}\nfn link[t any](h *holder, x map[string]t) {\n    h.m = x\n}\nfn worker(h holder, done chan int) {\n    h.m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    m := map[string]int{\"init\": 0}\n    var h holder\n    link(&h, m)\n    done := make(chan int, 1)\n    task worker(move h, done)\n    m[\"main\"] = 2\n    <-done\n}\n"),
+              ("I_nested_if_move_before_exit", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    if true {\n        m := map[string]int{\"k\": 1}\n        if true {\n            defer (fn() {\n                m[\"k\"] = 2\n            })()\n            task worker(move m, done)\n        }\n    }\n    <-done\n}\n"),
+              ("J_closure_after_move_same_block", "fn worker(m map[string]int, done chan int) {\n    m[\"worker\"] = 1\n    done <- 1\n}\nfn main() {\n    done := make(chan int, 1)\n    m := map[string]int{\"k\": 1}\n    task worker(move m, done)\n    defer (fn() {\n        m[\"k\"] = 2\n    })()\n    <-done\n}\n"),
             ];
             let mut out = String::new();
             for (name, src) in &cases {
@@ -48,7 +48,7 @@ jobs:
             std::fs::write("/tmp/sound_matrix.txt", &out).ok();
           }
           RS
-          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -40
+          cargo test -p hy-check --test zz_sound_probe -- --nocapture 2>&1 | tail -30
           echo "---MATRIX---"
           cat /tmp/sound_matrix.txt 2>/dev/null || echo "no matrix"
           cp /tmp/sound_matrix.txt $GITHUB_WORKSPACE/sound_matrix.txt 2>/dev/null || true
@@ -58,5 +58,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "sound matrix" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "sound matrix v3" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
