@@ -1,0 +1,28 @@
+name: acp-login2
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure start --json > login.json 2>login.err; echo "EXIT=$?"
+          head -c 3000 login.json; echo; echo "---ERR---"; head -c 800 login.err; echo
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-login2
+          for f in login.json login.err done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "fresh login" || echo NO_CHANGES
+          git push -f origin acp-login2
