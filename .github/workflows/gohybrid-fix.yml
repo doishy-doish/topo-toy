@@ -26,6 +26,7 @@ jobs:
         working-directory: /tmp/gohybrid/compiler
         run: |
           export HYB_ALLOW_TOOLCHAIN_DRIFT=1
+          set +e
           go version
           cargo build -p hyb > /tmp/hyb-build.log 2>&1; CARGO_EXIT=$?; echo "CARGO_EXIT=$CARGO_EXIT"
           grep -B2 -A10 '^error' /tmp/hyb-build.log | head -60
