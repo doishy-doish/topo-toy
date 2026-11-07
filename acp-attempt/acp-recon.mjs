@@ -11,12 +11,12 @@ const step = (k, v) => {
   steps.push({ t: new Date().toISOString(), k, v: s.slice(0, 2000) });
   console.log("##", k, s.slice(0, 500));
 };
-const run = (cmd, args, extraEnv = {}) => {
+const run = (cmd, args, extraEnv = {}, replaceEnv = false) => {
   try {
     const o = execFileSync(cmd, args, {
       encoding: "utf8",
       timeout: 180000,
-      env: { ...process.env, ...extraEnv },
+      env: replaceEnv ? { ...extraEnv } : { ...process.env, ...extraEnv },
     });
     return { ok: true, out: o.slice(0, 4000) };
   } catch (e) {
@@ -30,7 +30,7 @@ const run = (cmd, args, extraEnv = {}) => {
 
 fs.mkdirSync("acp-shots", { recursive: true });
 fs.mkdirSync("acp-attempt-out", { recursive: true });
-step("script-version", "1d-mainnet-curl");
+step("script-version", "1e-true-mainnet");
 
 step("node", process.version);
 step("install-cli", JSON.stringify(run("npm", ["i", "-g", "@virtuals-protocol/acp-cli"])));
@@ -39,8 +39,9 @@ const skill = run("acp", ["skill", "print"]);
 step("skill-print", skill.out.slice(0, 3000));
 
 const env = { IS_TESTNET: "true", ACP_CONFIG_DIR: process.cwd() + "/acp-home" };
-const envMain = { ACP_CONFIG_DIR: process.cwd() + "/acp-home" };
-const sMain = run("acp", ["configure", "start", "--json"], envMain);
+const cleanBase = { PATH: process.env.PATH, HOME: process.env.HOME, USER: "runner", LANG: "C.UTF-8" };
+const envMain = { ...cleanBase, ACP_CONFIG_DIR: process.cwd() + "/acp-home-main" };
+const sMain = run("acp", ["configure", "start", "--json"], envMain, true);
 step("configure-start-mainnet", JSON.stringify(sMain));
 let urlMain = null;
 try {
@@ -49,6 +50,11 @@ try {
   urlMain = j.url || null;
 } catch (e) { step("parse-main-fail", String(e).slice(0, 200)); }
 step("parsed-main", JSON.stringify({ host: urlMain ? new URL(urlMain).host : null }));
+let requestIdMain = null;
+try {
+  const m = sMain.out.match(/\{[\s\S]*\}/);
+  requestIdMain = (JSON.parse(m ? m[0] : "{}")).requestId || null;
+} catch (e) {}
 if (urlMain) {
   step("curl-main", JSON.stringify(run("curl", ["-sS", "-D", "-", "-o", "/dev/null", "-w", "HTTP:%{http_code} time:%{time_total}s ip:%{remote_ip}", "--max-time", 30, urlMain])));
 }
@@ -69,6 +75,9 @@ step("parsed", JSON.stringify({ host: url ? new URL(url).host : null, hasReq: !!
 if (url) {
   step("curl-testnet", JSON.stringify(run("curl", ["-sS", "-D", "-", "-o", "/dev/null", "-w", "HTTP:%{http_code} time:%{time_total}s", "--max-time", 30, url])));
 }
+// prefer true-mainnet URL for the browser when we have one
+if (urlMain) { url = urlMain; requestId = requestIdMain || requestId; step("browse-target", "mainnet " + url.slice(0, 100)); }
+else step("browse-target", "testnet fallback");
 
 if (url) {
   const browser = await chromium.launch();
