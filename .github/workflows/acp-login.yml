@@ -29,11 +29,18 @@ jobs:
           export ACP_CONFIG_DIR=$PWD/acp-home-login
           REQ=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('start.json','utf8')).requestId||'')}catch(e){console.log('')}")
           echo "REQUEST_ID=$REQ"
+          DONE=0
           for i in $(seq 1 120); do
-            if acp configure complete --request-id "$REQ" --json > complete.json 2>complete.err; then echo ACP_COMPLETE_OK; break; fi
+            if acp configure complete --request-id "$REQ" --json > complete.json 2>complete.err; then
+              ST=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('complete.json','utf8')).status||'')}catch(e){console.log('')}")
+              echo "poll $i status=$ST"
+              if [ "$ST" != "pending" ] && [ -n "$ST" ]; then echo ACP_COMPLETE_OK; DONE=1; break; fi
+            else
+              echo "poll $i exit nonzero"
+            fi
             sleep 20
           done
-          test -f complete.json && echo HAVE_COMPLETE || echo NO_COMPLETE_YET
+          [ "$DONE" = "1" ] && echo HAVE_COMPLETE || echo NO_COMPLETE_YET
       - name: seal result to repo secret public key
         if: always()
         env:
