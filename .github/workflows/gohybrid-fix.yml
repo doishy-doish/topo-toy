@@ -19,9 +19,29 @@ jobs:
           mkdir -p /tmp/fix
           curl -sL https://user.uploads.dev/file/bd4a725b822f1c9ff222cc74bc1b6b9a.bin -o /tmp/fix/patch_foreign_rs.py
           curl -sL https://user.uploads.dev/file/0944a42e24a9a6037b0f02afcc4fb5f4.bin -o /tmp/fix/patch_shapes_rs.py
-          curl -sL https://user.uploads.dev/file/4b012fd8d310203a6cbd32377ebd366d.bin -o /tmp/fix/time_time_surface.rs
+          curl -sL https://user.uploads.dev/file/333a991f0019551360e9837f5e13633b.bin -o /tmp/fix/time_time_surface.rs
           curl -sL https://user.uploads.dev/file/77c3d11e6a259e193a73aa02d437a3b9.bin -o /tmp/fix/time_time_emit.rs
           ls -la /tmp/fix
+      - name: PRE-FIX binary demo (clean tree)
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          export HYB_ALLOW_TOOLCHAIN_DRIFT=1
+          go version
+          cargo build -p hyb 2>&1 | tail -2
+          BIN=/tmp/gohybrid/compiler/target/debug/hyb
+          mkdir -p /tmp/gowork && cd /tmp/gowork && rm -f phantom.hy *.go phantombin build.log
+          printf '%s\n' 'import "time"' 'struct stats {' '    t time.time' '    n int' '}' 'fn main() {' '    var s stats' '    s.t.totally_fake()' '    fmt.println("n={s.n}")' '}' > phantom.hy
+          $BIN check phantom.hy > check.log 2>&1; CHECK_EXIT=$?
+          echo "CHECK_EXIT=$CHECK_EXIT"; cat check.log
+          $BIN build phantom.hy -o phantombin > build.log 2>&1; BUILD_EXIT=$?
+          echo "BUILD_EXIT=$BUILD_EXIT"
+          if ls *.go >/dev/null 2>&1; then go build ./... >> build.log 2>&1; GOBUILD_EXIT=$?; echo "GOBUILD_EXIT=$GOBUILD_EXIT"; else GOBUILD_EXIT="n/a"; fi
+          tail -20 build.log
+          echo "## pre-fix demo" >> $GITHUB_STEP_SUMMARY
+          echo "check_exit=$CHECK_EXIT build_exit=$BUILD_EXIT gobuild_exit=$GOBUILD_EXIT" >> $GITHUB_STEP_SUMMARY
+          grep -iE "totally_fake|no field or method" build.log | head -5
+          [ "$CHECK_EXIT" = "0" ] || { echo "GATE FAIL: phantom did not pass hyb check pre-fix"; exit 1; }
+          if [ "$BUILD_EXIT" != "0" ] || [ "$GOBUILD_EXIT" != "0" ]; then echo "PRE-FIX GATE HOLDS: checker accepts, toolchain refuses"; else echo "GATE FAIL: phantom also builds - no bug"; exit 1; fi
       - name: apply patches + install tests
         working-directory: /tmp/gohybrid/compiler
         run: |
@@ -30,6 +50,20 @@ jobs:
           cp /tmp/fix/time_time_surface.rs crates/hy-check/tests/zz_time_time_surface.rs
           cp /tmp/fix/time_time_emit.rs crates/hy-emit/tests/zz_time_time_emit.rs
           grep -c TIME_TIME crates/hy-check/src/foreign.rs
+      - name: POST-FIX binary demo (patched tree rejects)
+        working-directory: /tmp/gohybrid/compiler
+        run: |
+          export HYB_ALLOW_TOOLCHAIN_DRIFT=1
+          cargo build -p hyb 2>&1 | tail -1
+          BIN=/tmp/gohybrid/compiler/target/debug/hyb
+          cd /tmp/gowork
+          $BIN check phantom.hy > check2.log 2>&1; CHECK2_EXIT=$?
+          echo "CHECK2_EXIT=$CHECK2_EXIT"; cat check2.log
+          echo "post_fix_check_exit=$CHECK2_EXIT" >> $GITHUB_STEP_SUMMARY
+          grep -E "HYB-E1002|totally_fake" check2.log | head -5
+          [ "$CHECK2_EXIT" != "0" ] || { echo "FIX FAIL: phantom still accepted post-fix"; exit 1; }
+          grep -q "HYB-E1002" check2.log || { echo "FIX FAIL: no HYB-E1002"; exit 1; }
+          echo "POST-FIX GATE HOLDS: phantom rejected HYB-E1002"
       - name: full hy-check suite with fix
         working-directory: /tmp/gohybrid/compiler
         run: |
