@@ -5,11 +5,11 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe NitroMTA runner capability (no claim, no secrets)
+      - name: Strict NitroMTA version check (no claim)
         run: |
-          set -x
+          set -e
           uname -a
-          docker --version || true
-          docker pull ghcr.io/nitrosend/nitromta:latest || true
-          docker run --rm ghcr.io/nitrosend/nitromta:latest --version || true
-          echo "PROBE_DONE"
+          docker --version
+          docker pull ghcr.io/nitrosend/nitromta:latest
+          docker run --rm ghcr.io/nitrosend/nitromta:latest --version
+          echo "STRICT_PROBE_DONE"
