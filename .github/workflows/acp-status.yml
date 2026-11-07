@@ -1,0 +1,17 @@
+name: acp-status
+on: { workflow_dispatch: null }
+permissions: { contents: read }
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > /dev/null 2>&1
+          echo "---WHOAMI---"; acp agent whoami 2>&1 | head -30
+          echo "---SIGNER-STATUS---"; acp agent signer-status 2>&1 | head -20
+          echo "---SIGNER-POLICY---"; acp agent signer-policy 2>&1 | head -20
+          echo "---TOP-HELP---"; acp --help 2>&1 | head -50
