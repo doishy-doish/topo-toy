@@ -1,0 +1,41 @@
+name: acp-authcheck
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  st:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          echo "---COMPLETE-1---"
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg1.json 2>&1; echo "EXIT=$?"
+          head -c 1500 cfg1.json; echo
+          echo "---CONFIG-DIR---"
+          ls -la acp-home-x 2>&1 | head -20
+          find acp-home-x -type f 2>/dev/null | head -20
+          echo "---USE---"
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use.txt 2>&1; echo "EXIT=$?"
+          head -c 800 use.txt; echo
+          echo "---COMPLETE-2-RETRY---"
+          sleep 5
+          acp configure complete --request-id "f233ee8f475226fd9526bad6fc3f6eef" --json > cfg2.json 2>&1; echo "EXIT=$?"
+          head -c 1500 cfg2.json; echo
+          acp agent use --agent-id "01a1b6b0-fdab-70af-bab3-e3f971b8127f" > use2.txt 2>&1; echo "EXIT=$?"
+          head -c 800 use2.txt; echo
+          echo DONE > done.txt
+          exit 0
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-authcheck
+          for f in cfg1.json cfg2.json use.txt use2.txt done.txt; do [ -f "$f" ] && git add -f "$f"; done
+          git commit -m "auth recheck" || echo NO_CHANGES
+          git push -f origin acp-authcheck
