@@ -1,0 +1,1 @@
+{"error":"No signer configured for this agent.","code":"NO_SIGNER","recovery":"Run `acp agent add-signer` to generate and register a signing key."}
