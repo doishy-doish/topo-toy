@@ -29,8 +29,8 @@ jobs:
           }
           #[test]
           fn width() {
-            let a = "fn take(x float64) {\n    fmt.println(\"{x}\")\n}\nfn main() {\n    var i int\n    i = 1\n    take(i)\n}\n";
-            let b = "struct ops {}\nfn (o ops) take(x float64) {\n    fmt.println(\"{x}\")\n}\nfn main() {\n    var o ops\n    var i int\n    i = 1\n    o.take(i)\n}\n";
+            let a = "fn g(x f64) { print(x) }\nfn main() {\n    i := 2\n    g(i)\n}\n";
+            let b = "struct ops {}\nfn (o ops) g(x f64) { print(x) }\nfn main() {\n    var o ops\n    i := 2\n    o.g(i)\n}\n";
             let va = verdict(a);
             let vb = verdict(b);
             eprintln!("FREE {va}");
@@ -50,5 +50,5 @@ jobs:
           set +e
           git checkout -B gohybrid-sound-probe
           cp /tmp/sound_matrix.txt ./sound_matrix.txt 2>/dev/null || true
-          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "width" || true; git push -u origin gohybrid-sound-probe --force; fi
+          if [ -f ./sound_matrix.txt ]; then git add sound_matrix.txt; git -c user.name=probe -c user.email=probe@local commit -m "width2" || true; git push -u origin gohybrid-sound-probe --force; fi
           exit 0
