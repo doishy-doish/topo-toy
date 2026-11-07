@@ -1,0 +1,19 @@
+Usage: acp wallet [options] [command]
+
+Wallet commands
+
+Options:
+  -h, --help                  display help for command
+
+Commands:
+  address                     Show the configured wallet address
+  sign-message [options]      Sign a plaintext message with the active wallet
+  sign-typed-data [options]   Sign EIP-712 typed data with the active wallet
+  send-transaction [options]  Broadcast an EVM transaction from the active
+                              wallet
+  balance [options]           Show token balances. With no flags, shows all
+                              sponsored EVM chains plus Solana for the current
+                              environment. Narrow with --chain-id or --cluster.
+  topup [options]             Add funds to your agent wallet
+  sol                         Solana wallet commands
+  help [command]              display help for command

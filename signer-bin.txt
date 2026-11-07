@@ -1,0 +1,7 @@
+total 12728
+drwxr-xr-x 2 runner runner    4096 Nov  7 16:26 .
+drwxr-xr-x 6 runner runner    4096 Nov  7 16:26 ..
+-rwxr-xr-x 1 runner runner 3268770 Nov  7 16:26 acp-cli-signer-linux
+-rwxr-xr-x 1 runner runner 6341810 Nov  7 16:26 acp-cli-signer-macos
+-rwxr-xr-x 1 runner runner 3404288 Nov  7 16:26 acp-cli-signer-windows.exe
+/usr/local/lib/node_modules/@virtuals-protocol/acp-cli/bin/acp-cli-signer-linux: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=rTknOo6dPSM59ETEe9yi/-EOeEoJH4WvNRIAhEHC8/pXDDpT8n_hsnem0ObD0J/ecYSAePwg3U-EPI5g0-f, BuildID[sha1]=285da3096f99ff642b17eaa4bcfe6f31f08cca66, stripped
