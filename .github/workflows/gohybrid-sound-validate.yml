@@ -20,16 +20,17 @@ jobs:
         run: |
           set +e
           {
-          echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD) $(git -C /tmp/gohybrid rev-parse HEAD)"
+          echo "HEAD $(git -C /tmp/gohybrid rev-parse --short HEAD)"
           echo "rustc $(rustc --version)"
-          export HYB_PINNED_RUST="$(rustc --version)"
-          echo "HYB_PINNED_RUST=$HYB_PINNED_RUST"
-          echo "=== cargo build hyb ==="
-          cargo build -p hyb --manifest-path /tmp/gohybrid/compiler/Cargo.toml 2>&1 | tail -15
+          echo "=== env.sh ==="
+          cat /tmp/gohybrid/tools/env.sh 2>&1 | head -30
+          echo "=== source env.sh + build ==="
+          source /tmp/gohybrid/tools/env.sh 2>&1 | head -5
+          echo "after source HYB_PINNED_RUST=$HYB_PINNED_RUST"
+          cargo build -p hyb --manifest-path /tmp/gohybrid/compiler/Cargo.toml 2>&1 | tail -8
           HYB=/tmp/gohybrid/compiler/target/debug/hyb
           ls -la $HYB 2>&1
-          echo "=== hyb check help ==="
-          $HYB check --help 2>&1 | head -20
+          $HYB check --help 2>&1 | head -10
           mkdir -p /tmp/v
           cat > /tmp/v/b2.hy <<'HY'
           const seed = map[string]int{"a": 1}
@@ -45,10 +46,24 @@ jobs:
           HY
           echo "=== B2 check ==="
           $HYB check /tmp/v/b2.hy 2>&1; echo "check exit=$?"
+          cat > /tmp/v/a2.hy <<'HY'
+          const seed = map[string]int{"a": 1}
+          struct ops {}
+          fn ops.clobber_gen[t any](m map[string]t, v t) {
+              m["a"] = v
+          }
+          fn main() {
+              ops.clobber_gen[int](seed, 42)
+              fmt.println("done")
+          }
+          HY
+          echo "=== A2 check ==="
+          $HYB check /tmp/v/a2.hy 2>&1; echo "check exit=$?"
           echo "=== B2 build ==="
-          $HYB build --help 2>&1 | head -30
+          cd /tmp/v && $HYB build b2.hy 2>&1 | head -20; echo "build exit=$?"
+          ls -la /tmp/v/ 2>&1
           } > $GITHUB_WORKSPACE/validate_out.txt 2>&1
-          tail -80 $GITHUB_WORKSPACE/validate_out.txt || true
+          tail -100 $GITHUB_WORKSPACE/validate_out.txt || true
           exit 0
       - name: publish output
         if: always()
@@ -56,6 +71,6 @@ jobs:
           set +e
           git checkout -B gohybrid-validate-out
           git add validate_out.txt || true
-          git -c user.name=probe -c user.email=probe@local commit -m "validate out v3" || true
+          git -c user.name=probe -c user.email=probe@local commit -m "validate out v4" || true
           git push -u origin gohybrid-validate-out --force
           exit 0
