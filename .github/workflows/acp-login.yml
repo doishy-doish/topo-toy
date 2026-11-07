@@ -2,7 +2,7 @@ name: acp-login
 on:
   workflow_dispatch:
     inputs:
-      sealed_key:
+      seal_pubkey:
         description: 'Repo secrets public key (base64)'
         required: true
       key_id:
@@ -34,12 +34,26 @@ jobs:
             sleep 20
           done
           test -f complete.json && echo HAVE_COMPLETE || echo NO_COMPLETE_YET
-      - name: seal token to repo secret public key
+      - name: seal result to repo secret public key
+        if: always()
+        env:
+          SEAL_PUBKEY: ${{ inputs.seal_pubkey }}
         run: |
           pip install -q pynacl
-          python3 - sealed.json <<'EOF'
-          import json,sys,base64
+          python3 - <<'PYEOF'
+          import base64, os
           from nacl.public import PublicKey, SealedBox
-          key_b64 = sys.argv[1] if len(sys.argv)>1 else ""
-          EOF
-          echo SEAL_STEP_REACHED
+          pub = PublicKey(base64.b64decode(os.environ['SEAL_PUBKEY']))
+          box = SealedBox(pub)
+          data = b''
+          for f in ['complete.json', 'start.json']:
+              try:
+                  data += b'\n---' + f.encode() + b'---\n' + open(f,'rb').read()
+              except Exception:
+                  pass
+          open('sealed.box','wb').write(base64.b64encode(box.encrypt(data if data else b'NO_COMPLETE')))
+          print('SEALED_WROTE')
+          PYEOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: acp-sealed, path: sealed.box }
