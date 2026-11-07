@@ -1,0 +1,15 @@
+name: nitromta-probe
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe NitroMTA runner capability (no claim, no secrets)
+        run: |
+          set -x
+          uname -a
+          docker --version || true
+          docker pull ghcr.io/nitrosend/nitromta:latest || true
+          docker run --rm ghcr.io/nitrosend/nitromta:latest --version || true
+          echo "PROBE_DONE"
