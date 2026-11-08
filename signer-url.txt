@@ -1,0 +1,1 @@
+https://app.virtuals.io/acp/agents/01a1b6b0-fdab-70af-bab3-e3f971b8127f?action=add-signer&requestId=0b2030af9e62a2c4bae484c894dba483&policy=restricted&publicKey=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5gz7fMpLceZqAAFSBvXcPhBxePkv5iPsl6LBkpovsJpLbvCnthz599IlUn+qJT2uAq+5/OxvhKG4wz6F7vZArA==
