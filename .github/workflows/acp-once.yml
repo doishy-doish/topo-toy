@@ -1,0 +1,122 @@
+name: acp-once
+run-name: acp-once manual
+on: [workflow_dispatch]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  once:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: acp-home-x
+          key: acp-keystore-once
+          restore-keys: acp-keystore-once-
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - name: once
+        run: |
+          set +e
+          mkdir -p acp-home-x
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          AGENT=01a1b6b0-fdab-70af-bab3-e3f971b8127f
+          BR=acp-once
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B $BR
+          echo "WAITING_LOGIN" > phase.txt
+          git add -f phase.txt 2>/dev/null
+          git commit -m "once: waiting login" || true
+          git push -f origin $BR
+          acp --version > cli-version.txt 2>&1
+          AUTH=NO
+          CYCLE=0
+          while [ "$AUTH" = "NO" ] && [ $CYCLE -lt 3 ]; do
+            CYCLE=$((CYCLE+1))
+            acp configure start --json > login.json 2>login.err
+            REQ=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("login.json","utf8"));console.log(j.requestId||j.request_id||j.id||"")}catch(e){console.log("")}')
+            if [ -z "$REQ" ]; then echo "START_FAIL $CYCLE" >> phase-log.txt; sleep 20; continue; fi
+            URL=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("login.json","utf8"));console.log(j.url||j.configureUrl||j.loginUrl||j.authUrl||j.link||"")}catch(e){console.log("")}')
+            if [ -z "$URL" ]; then URL="https://app.virtuals.io/acp/auth/v2?requestId=$REQ"; fi
+            echo "$URL" > login-url.txt
+            echo "$REQ" > login-req.txt
+            echo "CYCLE $CYCLE REQ $REQ" >> phase-log.txt
+            git add -f login.json login-url.txt login-req.txt phase.txt phase-log.txt cli-version.txt 2>/dev/null
+            git commit -m "once: login url cycle $CYCLE" || true
+            git push -f origin $BR
+            T=0
+            while [ $T -lt 24 ]; do
+              acp configure complete --request-id "$REQ" --json > cfg.json 2>&1
+              acp agent use --agent-id "$AGENT" > use.txt 2>&1
+              if grep -q "success" use.txt 2>/dev/null; then AUTH=YES; break; fi
+              sleep 30
+              T=$((T+1))
+            done
+          done
+          echo "AUTH=$AUTH" > auth.txt
+          if [ "$AUTH" = "NO" ]; then
+            echo "FAILED_LOGIN" > phase.txt
+            git add -f phase.txt auth.txt phase-log.txt 2>/dev/null
+            git commit -m "once: login failed" || true
+            git push -f origin $BR
+            exit 0
+          fi
+          echo "AUTHED" > phase.txt
+          acp offering list --json > offerings.json 2>&1
+          git add -f phase.txt auth.txt offerings.json 2>/dev/null
+          git commit -m "once: authed" || true
+          git push -f origin $BR
+          SIGNED=NO
+          S=0
+          while [ "$SIGNED" = "NO" ] && [ $S -lt 2 ]; do
+            S=$((S+1))
+            acp agent add-signer --agent-id "$AGENT" --policy restricted --no-wait --json > signer.json 2>signer.err
+            SURL=$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync("signer.json","utf8")).signerUrl||"")}catch(e){console.log("")}')
+            SREQ=$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync("signer.json","utf8")).requestId||"")}catch(e){console.log("")}')
+            SPUB=$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync("signer.json","utf8")).publicKey||"")}catch(e){console.log("")}')
+            if [ -z "$SURL" ] || [ -z "$SREQ" ] || [ -z "$SPUB" ]; then echo "SIGNER_MINT_FAIL $S" >> phase-log.txt; sleep 20; continue; fi
+            echo "$SURL" > signer-url.txt
+            echo "WAITING_SIGNER" > phase.txt
+            git add -f signer.json signer-url.txt phase.txt phase-log.txt 2>/dev/null
+            git commit -m "once: signer url $S" || true
+            git push -f origin $BR
+            K=0
+            while [ $K -lt 15 ]; do
+              sleep 20
+              acp agent signer-status --agent-id "$AGENT" --request-id "$SREQ" --public-key "$SPUB" --json > signer-done.json 2>&1
+              if grep -q "completed" signer-done.json 2>/dev/null; then SIGNED=YES; break; fi
+              K=$((K+1))
+            done
+          done
+          echo "SIGNED=$SIGNED" > signer-flag.txt
+          if [ "$SIGNED" = "YES" ]; then
+            acp agent signer-policy --agent-id "$AGENT" --json > signer-policy.json 2>&1
+            acp browse "security audit" --top-k 10 --json > browse1.json 2>&1
+            acp browse "bounty" --top-k 10 --mode mixed --json > browse2.json 2>&1
+            acp job list --json > jobs.json 2>&1
+            acp offering list --json > offerings.json 2>&1
+            node -e 'const fs=require("fs");const rd=f=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){return null}};const n=x=>Array.isArray(x)?x.length:(x&&Array.isArray(x.items)?x.items.length:(x&&Array.isArray(x.offerings)?x.offerings.length:"?"));fs.writeFileSync("report.json",JSON.stringify({agent:"doishy-scout",offerings:n(rd("offerings.json")),browse_audit:n(rd("browse1.json")),browse_bounty:n(rd("browse2.json")),jobs:n(rd("jobs.json"))},null,2))'
+            echo "DONE" > phase.txt
+          else
+            echo "SIGNER_TIMEOUT" > phase.txt
+          fi
+          git add -f phase.txt signer-flag.txt signer-done.json signer-policy.json browse1.json browse2.json jobs.json offerings.json report.json phase-log.txt auth.txt 2>/dev/null
+          git commit -m "once: results" || true
+          git push -f origin $BR
+          exit 0
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: acp-home-x
+          key: acp-keystore-once-${{ github.run_id }}
+      - name: commit results
+        if: always()
+        run: |
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-once
+          git add -f phase.txt auth.txt phase-log.txt login.json login-url.txt login-req.txt signer.json signer-url.txt signer-done.json signer-flag.txt signer-policy.json offerings.json browse1.json browse2.json jobs.json report.json cli-version.txt 2>/dev/null || true
+          git commit -m "once: final sweep" || echo NO_CHANGES
+          git push -f origin acp-once
