@@ -1,0 +1,30 @@
+name: acp-demand
+run-name: acp-demand probe
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @virtuals-protocol/acp-cli
+      - run: |
+          set +e
+          export ACP_CONFIG_DIR=$PWD/acp-home-x
+          mkdir -p acp-home-x
+          git config user.name "doishy-doish"
+          git config user.email "doishy-doish@users.noreply.github.com"
+          git checkout -B acp-demand
+          for q in "security audit" audit bounty research coding development testing data writing; do
+            safe=$(echo "$q" | tr ' ' '_' )
+            acp browse "$q" --top-k 20 --json > browse-$safe.json 2>browse-$safe.err
+            echo "EXIT browse-$safe: $?" >> exits.txt
+          done
+          acp job list --json > jobs.json 2>jobs.err; echo "EXIT jobs: $?" >> exits.txt
+          acp offering list --json > offerings.json 2>offerings.err; echo "EXIT offerings: $?" >> exits.txt
+          git add -f exits.txt jobs.json jobs.err offerings.json offerings.err 2>/dev/null || true
+          git add -f browse-security_audit.json browse-audit.json browse-bounty.json browse-research.json browse-coding.json browse-development.json browse-testing.json browse-data.json browse-writing.json 2>/dev/null || true
+          git commit -m "demand probe" || echo NO_CHANGES
+          git push -f origin acp-demand
