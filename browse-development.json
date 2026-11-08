@@ -1,0 +1,1 @@
+{"error":"No active agent set.","code":"NO_ACTIVE_AGENT","recovery":"Run `acp agent create` or `acp agent use` to set an active agent."}
